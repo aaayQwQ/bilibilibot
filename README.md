@@ -6,8 +6,8 @@ C++17 Bilibili live-room chatbot. Runtime chat state and short conversation cont
 
 - Bilibili live danmaku WebSocket connection using cookie-authenticated room APIs.
 - Automatic heartbeat and reconnect.
-- Keyword-triggered AI replies through the Anthropic Messages API protocol (including Anthropic-compatible gateways such as SystemOne).
-- Configurable model, API key, Base URL and adaptive thinking switch.
+- Selectable AI API protocol: OpenAI-compatible Chat Completions or Anthropic Messages (including compatible gateways such as SystemOne).
+- Configurable provider Base URL, API key, model, token limit and thinking switch.
 - Per-user and room cooldowns, bounded in-memory conversation context, duplicate suppression.
 - No shell execution, local HTTP server, IPC, plugin loading, or host automation.
 
@@ -54,9 +54,10 @@ On Windows the executable is usually under `build/Release/bilibilibot.exe`.
 
 - `bilibili.room_id`: live room ID.
 - `bilibili.cookie`: browser Cookie header value. Keep it private; do not commit it.
-- `ai.base_url`: Anthropic-compatible API base URL. The program appends `/v1/messages`.
+- `ai.protocol`: choose `openai` or `anthropic`.
+- `ai.base_url`: API root or versioned base URL. OpenAI appends `/v1/chat/completions` (or `/chat/completions` if Base URL already ends in `/v1`); Anthropic appends `/v1/messages` (or `/messages` if Base URL already ends in `/v1`).
 - `ai.api_key`, `ai.model`: API credentials and model.
-- `ai.thinking`: sends `thinking: { "type": "adaptive" }` when true. The selected model and gateway must support adaptive thinking.
+- `ai.thinking`: for OpenAI-compatible services sends `reasoning_effort: "medium"`; for Anthropic sends `thinking: { "type": "adaptive" }`. The selected model and gateway must support the relevant option. Leave false if the gateway rejects it.
 - `bot.keywords`: `|` separated trigger strings.
 
 The bot obtains the authenticated account UID from Bilibili's navigation API. When `reply_to_self=true`, that account's own incoming messages may trigger replies too. Messages just sent by this process are tracked in memory and ignored if echoed back, preventing self-reply loops.
