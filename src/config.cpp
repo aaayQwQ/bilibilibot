@@ -6,6 +6,7 @@ bool Config::load(const QString &path, QString *error) {
     QSettings s(path, QSettings::IniFormat);
     roomId = s.value("bilibili/room_id", 0).toLongLong();
     cookie = s.value("bilibili/cookie").toString().trimmed();
+    aiProtocol = s.value("ai/protocol", "anthropic").toString().trimmed().toLower();
     aiBaseUrl = s.value("ai/base_url").toString().trimmed();
     aiApiKey = s.value("ai/api_key").toString().trimmed();
     aiModel = s.value("ai/model").toString().trimmed();
@@ -13,11 +14,14 @@ bool Config::load(const QString &path, QString *error) {
     maxTokens = qBound(64, s.value("ai/max_tokens", 512).toInt(), 8192);
     systemPrompt = s.value("ai/system_prompt",
         "你是一个直播间聊天助手。请用简短、自然、友好的中文回答观众的问题。回答适合直播弹幕，不要使用 Markdown。").toString();
+
+    keywords.clear();
     const QString rawKeywords = s.value("bot/keywords", "@AI").toString();
     for (const QString &word : rawKeywords.split('|', Qt::SkipEmptyParts)) {
         const QString w = word.trimmed();
         if (!w.isEmpty()) keywords.push_back(w);
     }
+
     maxReplyChars = qBound(20, s.value("bot/max_reply_chars", 180).toInt(), 500);
     userCooldownSeconds = qBound(0, s.value("bot/user_cooldown_seconds", 15).toInt(), 3600);
     roomCooldownSeconds = qBound(0, s.value("bot/room_cooldown_seconds", 3).toInt(), 3600);
@@ -32,13 +36,22 @@ bool Config::load(const QString &path, QString *error) {
         if (error) *error = "请填写有效的 room_id，并在 Cookie 中包含 SESSDATA 和 bili_jct。";
         return false;
     }
+
     const int csrfPos = cookie.indexOf("bili_jct=");
     if (csrfPos >= 0) {
         const int begin = csrfPos + 9;
         const int end = cookie.indexOf(';', begin);
         csrf = cookie.mid(begin, end < 0 ? -1 : end - begin).trimmed();
     }
-    if (csrf.isEmpty()) {\n        if (error) *error = "Cookie 中的 bili_jct 不能为空。";\n        return false;\n    }\n    if (aiBaseUrl.isEmpty() || aiApiKey.isEmpty() || aiModel.isEmpty()) {
+    if (csrf.isEmpty()) {
+        if (error) *error = "Cookie 中的 bili_jct 不能为空。";
+        return false;
+    }
+    if (aiProtocol != "openai" && aiProtocol != "anthropic") {
+        if (error) *error = "ai.protocol 只支持 openai 或 anthropic。";
+        return false;
+    }
+    if (aiBaseUrl.isEmpty() || aiApiKey.isEmpty() || aiModel.isEmpty()) {
         if (error) *error = "请填写 ai.base_url、ai.api_key 和 ai.model。";
         return false;
     }
