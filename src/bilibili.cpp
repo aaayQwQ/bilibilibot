@@ -10,6 +10,7 @@
 #include <QRegularExpression>
 #include <QMap>
 #include <zlib.h>
+#include <utility>
 
 namespace {
 const int kHeaderSize = 16;
