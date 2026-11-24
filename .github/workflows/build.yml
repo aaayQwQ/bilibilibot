@@ -49,7 +49,7 @@ jobs:
       - name: Install Windows zlib
         if: runner.os == 'Windows'
         shell: pwsh
-        run: vcpkg install zlib:x64-windows
+        run: vcpkg install zlib:x64-windows-static
 
       - name: Install macOS zlib
         if: runner.os == 'macOS'
@@ -67,7 +67,7 @@ jobs:
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
 
       - name: Configure (Linux/macOS)
         if: runner.os != 'Windows'
@@ -81,7 +81,8 @@ jobs:
         run: |
           mkdir -p dist
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp build/bilibilibot.exe dist/
+            cp build/Release/bilibilibot.exe dist/
+            windeployqt --dir dist --release --no-translations dist/bilibilibot.exe
           else
             cp build/bilibilibot dist/
           fi
