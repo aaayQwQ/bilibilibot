@@ -38,7 +38,7 @@ bool Config::load(const QString &path, QString *error) {
         const int end = cookie.indexOf(';', begin);
         csrf = cookie.mid(begin, end < 0 ? -1 : end - begin).trimmed();
     }
-    if (aiBaseUrl.isEmpty() || aiApiKey.isEmpty() || aiModel.isEmpty()) {
+    if (csrf.isEmpty()) {\n        if (error) *error = "Cookie 中的 bili_jct 不能为空。";\n        return false;\n    }\n    if (aiBaseUrl.isEmpty() || aiApiKey.isEmpty() || aiModel.isEmpty()) {
         if (error) *error = "请填写 ai.base_url、ai.api_key 和 ai.model。";
         return false;
     }
