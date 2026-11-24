@@ -5,11 +5,15 @@ room_id=0
 cookie=
 
 [ai]
-; Anthropic Messages API 兼容服务的根地址，不要填写 /v1/messages
+; 协议选择：openai 或 anthropic
+; openai 使用 /v1/chat/completions；anthropic 使用 /v1/messages
+protocol=anthropic
+; API 根地址。可填写 https://api.example.com 或带 /v1 的地址
 base_url=https://api.example.com
 api_key=
 model=
-; true=启用 adaptive thinking，false=不发送 thinking 字段
+; true=启用思考：OpenAI 发送 reasoning_effort=medium；
+; Anthropic 发送 thinking.type=adaptive（需服务商和模型支持）
 thinking=false
 max_tokens=512
 system_prompt=你是一个直播间聊天助手。请用简短、自然、友好的中文回答观众的问题。回答适合直播弹幕，不要使用 Markdown，不要声称自己是主播。
