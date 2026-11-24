@@ -6,6 +6,7 @@ struct Config {
     qint64 roomId = 0;
     QString cookie;
     QString csrf;
+    QString aiProtocol = "anthropic";
     QString aiBaseUrl;
     QString aiApiKey;
     QString aiModel;
