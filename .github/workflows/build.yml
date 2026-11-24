@@ -40,7 +40,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev
+          sudo apt-get install -y cmake g++ zlib1g-dev
+
+      - name: Install Windows zlib
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: vcpkg install zlib:x64-windows
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -51,7 +56,13 @@ jobs:
           arch: ${{ matrix.qt_arch }}
           modules: 'qtwebsockets'
 
-      - name: Configure
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Configure (Linux/macOS)
+        if: runner.os != 'Windows'
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
