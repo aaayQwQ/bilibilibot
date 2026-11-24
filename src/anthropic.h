@@ -4,10 +4,10 @@
 #include <QNetworkAccessManager>
 #include <QJsonArray>
 
-class AnthropicClient final : public QObject {
+class AIClient final : public QObject {
     Q_OBJECT
 public:
-    explicit AnthropicClient(const Config &config, QObject *parent = nullptr);
+    explicit AIClient(const Config &config, QObject *parent = nullptr);
     void generate(const QString &userName, const QString &message, const QJsonArray &history);
 
 signals:
