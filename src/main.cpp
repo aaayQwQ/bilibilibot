@@ -111,6 +111,15 @@ int main(int argc, char *argv[]) {
                 log(QString("忽略 %1：直播间回复冷却中。").arg(name));
                 return;
             }
+            // Bound all runtime-only state so a busy room cannot grow RAM forever.
+            if (queue.size() >= 50) {
+                log("待处理队列已满，丢弃本次触发。");
+                return;
+            }
+            for (auto it = userLastReply.begin(); it != userLastReply.end();) {
+                if (it.value() < now - 3600) it = userLastReply.erase(it);
+                else ++it;
+            }
             userLastReply.insert(uid, now);
             roomLastReply = now;
             queue.enqueue(ChatRequest{uid, name, text});
@@ -132,7 +141,11 @@ int main(int argc, char *argv[]) {
             const int maxMessages = config.memoryTurns * 2;
             while (history.size() > maxMessages && !history.isEmpty())
                 history.removeAt(0);
-            if (config.memoryTurns > 0) histories.insert(current.uid, history);
+            if (config.memoryTurns > 0) {
+                if (!histories.contains(current.uid) && histories.size() >= 500)
+                    histories.erase(histories.begin());
+                histories.insert(current.uid, history);
+            }
             recentBotMessages.insert(reply, QDateTime::currentSecsSinceEpoch());
             log(QString("准备发送回复：%1").arg(reply));
             bilibili.sendDanmaku(reply);
