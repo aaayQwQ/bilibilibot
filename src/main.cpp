@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
             history.append(QJsonObject{{"role", "assistant"}, {"content", reply}});
             const int maxMessages = config.memoryTurns * 2;
             while (history.size() > maxMessages && !history.isEmpty())
-                history.removeFirst();
+                history.removeAt(0);
             if (config.memoryTurns > 0) histories.insert(current.uid, history);
             recentBotMessages.insert(reply, QDateTime::currentSecsSinceEpoch());
             log(QString("准备发送回复：%1").arg(reply));
