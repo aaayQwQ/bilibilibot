@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
             processNext();
         });
 
-    QObject::connect(&ai, &AnthropicClient::finished, &app, [&](const QString &answer) {
+    QObject::connect(&ai, &AIClient::finished, &app, [&](const QString &answer) {
         QString reply = answer;
         reply.replace('\n', ' ');
         reply.replace('\r', ' ');
@@ -153,7 +153,7 @@ int main(int argc, char *argv[]) {
         busy = false;
         QTimer::singleShot(0, &app, processNext);
     });
-    QObject::connect(&ai, &AnthropicClient::failed, &app, [&](const QString &reason) {
+    QObject::connect(&ai, &AIClient::failed, &app, [&](const QString &reason) {
         log("AI 请求失败：" + reason);
         busy = false;
         QTimer::singleShot(0, &app, processNext);
