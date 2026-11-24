@@ -7,14 +7,12 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QUrlQuery>
-#include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QMap>
 #include <zlib.h>
 
 namespace {
 const int kHeaderSize = 16;
-const QByteArray kMixinOrder = QByteArray::fromHex(
-    "2e2f1202350817200f320a1f3a032d231b2b053121092a131d1c0e270c26290d2507300810373018");
 }
 
 BilibiliClient::BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObject *parent)
