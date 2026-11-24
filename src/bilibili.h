@@ -6,6 +6,7 @@
 #include <QByteArray>
 #include <QJsonObject>
 #include <QMap>
+#include <QUrl>
 #include <functional>
 
 class BilibiliClient final : public QObject {
