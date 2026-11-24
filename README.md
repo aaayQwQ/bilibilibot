@@ -16,7 +16,7 @@ C++17 Bilibili live-room chatbot. Runtime chat state and short conversation cont
 ## Dependencies
 
 - CMake 3.21+
-- Qt 6.2+ modules: Core, Network, WebSockets
+- Qt 6.5+ modules: Core, Network, WebSockets
 - zlib
 - C++17 compiler
 
