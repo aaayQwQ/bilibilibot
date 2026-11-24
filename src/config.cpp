@@ -4,7 +4,6 @@
 
 bool Config::load(const QString &path, QString *error) {
     QSettings s(path, QSettings::IniFormat);
-    s.setIniCodec("UTF-8");
     roomId = s.value("bilibili/room_id", 0).toLongLong();
     cookie = s.value("bilibili/cookie").toString().trimmed();
     aiBaseUrl = s.value("ai/base_url").toString().trimmed();
