@@ -30,7 +30,7 @@ jobs:
           - os: macos-14
             name: macOS x64
             qt_arch: clang_64
-            artifact: bilibilibot-macos-x64
+            artifact: bilibilibot-macos-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -46,6 +46,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: vcpkg install zlib:x64-windows
+
+      - name: Install macOS zlib
+        if: runner.os == 'macOS'
+        run: brew install zlib
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
