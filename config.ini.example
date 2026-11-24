@@ -1,10 +1,8 @@
 [bilibili]
 ; 直播间号（短号或真实房间号均可）
 room_id=0
-; 直接粘贴浏览器复制的完整 Cookie 即可，也支持 "Cookie: ..." 请求头格式
-; 程序自动识别 SESSDATA 和 bili_jct；其他 Cookie 字段会保留用于请求
-; 请将 Cookie 保持在同一行，不要加引号
-cookie=
+; Cookie 不再写入此文件，请将 Get cookies.txt LOCALLY 导出的 Netscape 格式文件
+; 放在本文件同目录，并命名为 cookie.txt。
 
 [ai]
 ; 协议选择：openai 或 anthropic
