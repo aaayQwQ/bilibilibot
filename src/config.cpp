@@ -1,4 +1,6 @@
 #include "config.h"
+#include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QMap>
@@ -10,83 +12,107 @@ QMap<QString, QString> parseCookieFields(QString raw) {
     if (!raw.isEmpty() && raw.front() == QChar(0xFEFF))
         raw.remove(0, 1);
 
-    // Accept a copied request header as well as a plain Cookie value.
     if (raw.startsWith("Cookie:", Qt::CaseInsensitive))
         raw = raw.mid(raw.indexOf(':') + 1).trimmed();
-
-    // Also tolerate users pasting the literal "cookie=..." prefix.
     if (raw.startsWith("cookie=", Qt::CaseInsensitive) &&
         raw.contains("SESSDATA=", Qt::CaseInsensitive))
         raw = raw.mid(raw.indexOf('=') + 1).trimmed();
 
-    // Some browser exports contain line breaks or a header label before the value.
-    raw.replace("\r", "");
     QMap<QString, QString> fields;
     const QStringList parts = raw.split(';', Qt::KeepEmptyParts);
     for (QString part : parts) {
         part = part.trimmed();
         if (part.isEmpty())
             continue;
-
         const qsizetype equal = part.indexOf('=');
         if (equal <= 0)
             continue;
 
         QString key = part.left(equal).trimmed();
-        // Ignore a leading header label if the export is "Cookie: KEY=value".
         const qsizetype colon = key.lastIndexOf(':');
         if (colon >= 0)
             key = key.mid(colon + 1).trimmed();
-        key = key.toUpper();
-
-        QString value = part.mid(equal + 1).trimmed();
-        if (value.size() >= 2 && value.startsWith('"') && value.endsWith('"'))
-            value = value.mid(1, value.size() - 2);
-
+        const QString value = part.mid(equal + 1).trimmed();
         if (!key.isEmpty() && !value.isEmpty())
-            fields.insert(key, value);
+            fields.insert(key.toUpper(), value);
     }
     return fields;
 }
 
+// Supports the Netscape cookies.txt format exported by "Get cookies.txt LOCALLY".
+// Plain Cookie headers are accepted as a convenience, too.
 QString readCookieFile(const QString &configPath) {
     const QString cookiePath = QFileInfo(configPath).dir().filePath("cookie.txt");
     QFile file(cookiePath);
     if (!file.open(QIODevice::ReadOnly))
         return {};
 
-    // Cookie files are expected to be UTF-8 text. Do not print or log their contents.
-    return QString::fromUtf8(file.readAll()).trimmed();
+    const QString raw = QString::fromUtf8(file.readAll()).trimmed();
+    if (raw.isEmpty())
+        return {};
+
+    QMap<QString, QString> bilibiliCookies;
+    const QStringList lines = raw.split(QRegularExpression("[\\r\\n]+"), Qt::SkipEmptyParts);
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+
+    for (QString line : lines) {
+        line = line.trimmed();
+        if (line.isEmpty())
+            continue;
+
+        bool httpOnly = false;
+        if (line.startsWith("#HttpOnly_", Qt::CaseInsensitive)) {
+            line.remove(0, 10);
+            httpOnly = true;
+        } else if (line.startsWith('#')) {
+            continue;
+        }
+
+        const QStringList columns = line.split('\t', Qt::KeepEmptyParts);
+        if (columns.size() < 7)
+            continue;
+
+        QString domain = columns.at(0).trimmed().toLower();
+        if (domain.startsWith('.'))
+            domain.remove(0, 1);
+        if (domain != "bilibili.com" && !domain.endsWith(".bilibili.com"))
+            continue;
+
+        bool expiryOk = false;
+        const qint64 expiry = columns.at(4).toLongLong(&expiryOk);
+        if (expiryOk && expiry > 0 && expiry <= now)
+            continue;
+
+        const QString name = columns.at(5).trimmed();
+        const QString value = columns.at(6).trimmed();
+        if (!name.isEmpty() && !value.isEmpty())
+            bilibiliCookies.insert(name, value);
+        Q_UNUSED(httpOnly);
+    }
+
+    if (!bilibiliCookies.isEmpty()) {
+        QStringList headerParts;
+        for (auto it = bilibiliCookies.cbegin(); it != bilibiliCookies.cend(); ++it)
+            headerParts.push_back(it.key() + "=" + it.value());
+        return headerParts.join("; ");
+    }
+
+    // Backward compatibility: accept a raw Cookie header stored in cookie.txt.
+    return raw;
 }
 }
 
 bool Config::load(const QString &path, QString *error) {
     if (!QFileInfo::exists(path)) {
-        if (error) *error = QStringLiteral("找不到配置文件：%1（请复制 config.ini.example 为 config.ini）")
-                                .arg(QFileInfo(path).absoluteFilePath());
+        if (error) *error = QStringLiteral("找不到配置文件：%1").arg(QFileInfo(path).absoluteFilePath());
         return false;
     }
 
     QSettings s(path, QSettings::IniFormat);
     roomId = s.value("bilibili/room_id", 0).toLongLong();
-    cookie = s.value("bilibili/cookie").toString().trimmed();
-    QMap<QString, QString> cookieFields = parseCookieFields(cookie);
-    QString cookieSource = "config.ini";
-
-    // If the INI value is empty or incomplete, automatically try cookie.txt
-    // in the same directory. This also avoids failures when an INI editor
-    // changes or truncates a long Cookie value.
-    if (cookieFields.value("SESSDATA").isEmpty() ||
-        cookieFields.value("BILI_JCT").isEmpty()) {
-        const QString fileCookie = readCookieFile(path);
-        const QMap<QString, QString> fileFields = parseCookieFields(fileCookie);
-        if (!fileFields.value("SESSDATA").isEmpty() &&
-            !fileFields.value("BILI_JCT").isEmpty()) {
-            cookie = fileCookie;
-            cookieFields = fileFields;
-            cookieSource = "cookie.txt";
-        }
-    }
+    // Cookie is deliberately kept out of config.ini. Load it from cookie.txt.
+    cookie = readCookieFile(path);
+    const QMap<QString, QString> cookieFields = parseCookieFields(cookie);
 
     aiProtocol = s.value("ai/protocol", "anthropic").toString().trimmed().toLower();
     aiBaseUrl = s.value("ai/base_url").toString().trimmed();
@@ -111,8 +137,7 @@ bool Config::load(const QString &path, QString *error) {
     memoryTurns = qBound(0, s.value("bot/memory_turns", 4).toInt(), 12);
 
     if (s.status() != QSettings::NoError) {
-        if (error) *error = QStringLiteral("配置文件格式错误或无法读取：%1")
-                                .arg(QFileInfo(path).absoluteFilePath());
+        if (error) *error = QStringLiteral("配置文件格式错误或无法读取：%1").arg(QFileInfo(path).absoluteFilePath());
         return false;
     }
     if (roomId <= 0) {
@@ -120,20 +145,19 @@ bool Config::load(const QString &path, QString *error) {
         return false;
     }
 
-    const QString sessdata = cookieFields.value("SESSDATA");
+    if (cookie.isEmpty()) {
+        if (error) *error = "找不到有效的 cookie.txt。请将 Get cookies.txt LOCALLY 导出的 Netscape 格式文件放到 config.ini 同目录，并命名为 cookie.txt。";
+        return false;
+    }
+    if (cookieFields.value("SESSDATA").isEmpty()) {
+        if (error) *error = "cookie.txt 中没有找到 Bilibili 的 SESSDATA。请确认导出时包含 bilibili.com 域名的 Cookie。";
+        return false;
+    }
     csrf = cookieFields.value("BILI_JCT");
-    if (sessdata.isEmpty()) {
-        if (error) *error = "config.ini 和 cookie.txt 中都没有识别到 SESSDATA。请检查 Cookie 内容和格式。";
-        return false;
-    }
     if (csrf.isEmpty()) {
-        if (error) *error = "Cookie 中没有识别到 bili_jct。请检查 Cookie 内容和格式。";
+        if (error) *error = "cookie.txt 中没有找到 Bilibili 的 bili_jct。请确认导出的 Cookie 未过期且包含 bili_jct。";
         return false;
     }
-
-    // Keep the full cookie for authenticated Bilibili requests; only SESSDATA and
-    // bili_jct are required for validation and CSRF extraction.
-    Q_UNUSED(cookieSource);
 
     if (aiProtocol != "openai" && aiProtocol != "anthropic") {
         if (error) *error = "ai.protocol 只支持 openai 或 anthropic。";
