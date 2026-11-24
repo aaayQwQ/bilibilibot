@@ -4,6 +4,9 @@
 #include <QWebSocket>
 #include <QTimer>
 #include <QByteArray>
+#include <QJsonObject>
+#include <QMap>
+#include <functional>
 
 class BilibiliClient final : public QObject {
     Q_OBJECT
