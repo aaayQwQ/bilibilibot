@@ -1,0 +1,29 @@
+[bilibili]
+; 直播间号（短号或真实房间号均可）
+room_id=0
+; 完整 Cookie 字符串，至少需要 SESSDATA 和 bili_jct
+cookie=
+
+[ai]
+; Anthropic Messages API 兼容服务的根地址，不要填写 /v1/messages
+base_url=https://api.example.com
+api_key=
+model=
+; true=启用 adaptive thinking，false=不发送 thinking 字段
+thinking=false
+max_tokens=512
+system_prompt=你是一个直播间聊天助手。请用简短、自然、友好的中文回答观众的问题。回答适合直播弹幕，不要使用 Markdown，不要声称自己是主播。
+
+[bot]
+; 触发词以 | 分隔，任意一个命中即触发
+keywords=@AI|@机器人
+; 机器人每次回复的最大字符数
+max_reply_chars=180
+; 同一用户两次触发的最小间隔（秒）
+user_cooldown_seconds=15
+; 全房间两次回复的最小间隔（秒）
+room_cooldown_seconds=3
+; 是否允许机器人账号自己发送的普通弹幕触发关键词
+reply_to_self=true
+; 单个用户在内存中保留的对话轮数
+memory_turns=4
