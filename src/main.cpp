@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     log("运行数据仅保存在内存中；按 Ctrl+C 退出。");
 
     BilibiliClient bilibili(config.roomId, config.cookie, config.csrf);
-    AnthropicClient ai(config);
+    AIClient ai(config);
     QHash<qint64, QJsonArray> histories;
     QHash<qint64, qint64> userLastReply;
     QHash<QString, qint64> recentBotMessages;
