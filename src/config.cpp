@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QMap>
 #include <QSettings>
+#include <QRegularExpression>
 
 namespace {
 QMap<QString, QString> parseCookieFields(QString raw) {
