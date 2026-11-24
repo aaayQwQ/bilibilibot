@@ -1,11 +1,58 @@
 #include "config.h"
 #include <QFileInfo>
+#include <QMap>
 #include <QSettings>
 
+namespace {
+QMap<QString, QString> parseCookieFields(QString raw) {
+    raw = raw.trimmed();
+    if (!raw.isEmpty() && raw.front() == QChar(0xFEFF))
+        raw.remove(0, 1);
+
+    // Accept a copied request header as well as a plain Cookie value.
+    if (raw.startsWith("Cookie:", Qt::CaseInsensitive))
+        raw = raw.mid(raw.indexOf(':') + 1).trimmed();
+
+    // Also tolerate users pasting the literal "cookie=..." prefix into the INI value.
+    if (raw.startsWith("cookie=", Qt::CaseInsensitive) &&
+        raw.contains("SESSDATA=", Qt::CaseInsensitive))
+        raw = raw.mid(raw.indexOf('=') + 1).trimmed();
+
+    QMap<QString, QString> fields;
+    const QStringList parts = raw.split(';', Qt::KeepEmptyParts);
+    for (QString part : parts) {
+        part = part.trimmed();
+        if (part.isEmpty())
+            continue;
+
+        const qsizetype equal = part.indexOf('=');
+        if (equal <= 0)
+            continue;
+
+        const QString key = part.left(equal).trimmed().toUpper();
+        QString value = part.mid(equal + 1).trimmed();
+        if (value.size() >= 2 && value.startsWith('"') && value.endsWith('"'))
+            value = value.mid(1, value.size() - 2);
+
+        if (!key.isEmpty() && !value.isEmpty())
+            fields.insert(key, value);
+    }
+    return fields;
+}
+}
+
 bool Config::load(const QString &path, QString *error) {
+    if (!QFileInfo::exists(path)) {
+        if (error) *error = QStringLiteral("找不到配置文件：%1（请复制 config.ini.example 为 config.ini）")
+                                .arg(QFileInfo(path).absoluteFilePath());
+        return false;
+    }
+
     QSettings s(path, QSettings::IniFormat);
     roomId = s.value("bilibili/room_id", 0).toLongLong();
     cookie = s.value("bilibili/cookie").toString().trimmed();
+    const QMap<QString, QString> cookieFields = parseCookieFields(cookie);
+
     aiProtocol = s.value("ai/protocol", "anthropic").toString().trimmed().toLower();
     aiBaseUrl = s.value("ai/base_url").toString().trimmed();
     aiApiKey = s.value("ai/api_key").toString().trimmed();
@@ -28,25 +75,29 @@ bool Config::load(const QString &path, QString *error) {
     replyToSelf = s.value("bot/reply_to_self", true).toBool();
     memoryTurns = qBound(0, s.value("bot/memory_turns", 4).toInt(), 12);
 
-    if (!QFileInfo::exists(path)) {
-        if (error) *error = QStringLiteral("找不到配置文件：%1（请复制 config.ini.example 为 config.ini）").arg(path);
+    if (s.status() != QSettings::NoError) {
+        if (error) *error = QStringLiteral("配置文件格式错误或无法读取：%1")
+                                .arg(QFileInfo(path).absoluteFilePath());
         return false;
     }
-    if (roomId <= 0 || cookie.isEmpty() || !cookie.contains("SESSDATA=") || !cookie.contains("bili_jct=")) {
-        if (error) *error = "请填写有效的 room_id，并在 Cookie 中包含 SESSDATA 和 bili_jct。";
+    if (roomId <= 0) {
+        if (error) *error = "bilibili.room_id 无效，请填写大于 0 的直播间号。";
         return false;
     }
 
-    const int csrfPos = cookie.indexOf("bili_jct=");
-    if (csrfPos >= 0) {
-        const int begin = csrfPos + 9;
-        const int end = cookie.indexOf(';', begin);
-        csrf = cookie.mid(begin, end < 0 ? -1 : end - begin).trimmed();
-    }
-    if (csrf.isEmpty()) {
-        if (error) *error = "Cookie 中的 bili_jct 不能为空。";
+    const QString sessdata = cookieFields.value("SESSDATA");
+    csrf = cookieFields.value("BILI_JCT");
+    if (sessdata.isEmpty()) {
+        if (error) *error = "Cookie 中没有识别到有效的 SESSDATA。请粘贴完整 Cookie（无需手动拆分）。";
         return false;
     }
+    if (csrf.isEmpty()) {
+        if (error) *error = "Cookie 中没有识别到有效的 bili_jct。请粘贴完整 Cookie（无需手动拆分）。";
+        return false;
+    }
+
+    // Keep the full cookie for authenticated Bilibili requests; only SESSDATA and
+    // bili_jct are required for validation and CSRF extraction.
     if (aiProtocol != "openai" && aiProtocol != "anthropic") {
         if (error) *error = "ai.protocol 只支持 openai 或 anthropic。";
         return false;
