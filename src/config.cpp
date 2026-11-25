@@ -8,8 +8,24 @@
 #include <QRegularExpression>
 #include <QUrl>
 #include <QHostAddress>
+#include <QDebug>
 
 namespace {
+bool tightenPermissions(const QString &path, const QString &label) {
+    const QFileInfo info(path);
+    if (!info.exists() || !info.isFile()) return false;
+    if (!QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
+        qWarning().noquote() << QStringLiteral("[SECURITY] 无法收紧 %1 文件权限：%2。请检查文件系统权限。")
+            .arg(label, info.absoluteFilePath());
+        return false;
+    }
+#ifdef Q_OS_WIN
+    qWarning().noquote() << QStringLiteral("[SECURITY] %1 已请求 Qt 所有者读写权限；Windows 实际访问控制仍以 NTFS ACL 为准，请检查文件属性中的安全选项卡：%2")
+        .arg(label, info.absoluteFilePath());
+#endif
+    return true;
+}
+
 QMap<QString, QString> parseCookieFields(QString raw) {
     raw = raw.trimmed();
     if (!raw.isEmpty() && raw.front() == QChar(0xFEFF))
@@ -49,6 +65,7 @@ QString readCookieFile(const QString &configPath) {
     const QFileInfo cookieInfo(cookiePath);
     if (cookieInfo.isSymLink() || !cookieInfo.isFile() || cookieInfo.size() > 1024 * 1024)
         return {};
+    tightenPermissions(cookiePath, QStringLiteral("Cookie"));
     QFile file(cookiePath);
     if (!file.open(QIODevice::ReadOnly))
         return {};
@@ -114,6 +131,11 @@ bool Config::load(const QString &path, QString *error) {
         return false;
     }
 
+    if (QFileInfo(path).isSymLink()) {
+        if (error) *error = QStringLiteral("配置文件是符号链接，拒绝读取：%1").arg(QFileInfo(path).absoluteFilePath());
+        return false;
+    }
+    tightenPermissions(path, QStringLiteral("配置"));
     QSettings s(path, QSettings::IniFormat);
     roomId = s.value("bilibili/room_id", 0).toLongLong();
     // Cookie is deliberately kept out of config.ini. Load it from cookie.txt.
@@ -200,9 +222,6 @@ bool Config::load(const QString &path, QString *error) {
         if (error) *error = QString("AI 主机 %1 不在 ai.allowed_hosts 显式白名单中。").arg(aiHost);
         return false;
     }
-    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    QFile::setPermissions(QFileInfo(path).dir().filePath("cookie.txt"),
-                          QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     if (keywords.isEmpty()) {
         if (error) *error = "bot.keywords 至少需要配置一个关键词。";
         return false;
