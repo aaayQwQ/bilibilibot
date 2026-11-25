@@ -137,11 +137,11 @@ void PluginManager::dispatch(const QJsonObject &event) {
     if (!enabled_ || !allowSendDanmaku_ || !sender_) return;
     const QString eventType = event.value("type").toString();
     const qint64 now = monotonicClock_.elapsed();
-    if (lastGlobalSendMs_ >= 0 && now - lastGlobalSendMs_ < 3000) return;
+    if (pendingGlobalSend_ || (lastGlobalSendMs_ >= 0 && now - lastGlobalSendMs_ < 3000)) return;
 
     for (auto it = plugins_.begin(); it != plugins_.end(); ++it) {
         Rule &rule = it.value();
-        if (rule.event != eventType ||
+        if (pendingRules_.contains(rule.id) || rule.event != eventType ||
             (rule.lastTriggeredMs >= 0 && now - rule.lastTriggeredMs < qint64(rule.cooldownSeconds) * 1000))
             continue;
         const qint64 count = integerField(event, {"count", "num"}, 0);
@@ -159,10 +159,23 @@ void PluginManager::dispatch(const QJsonObject &event) {
         text = safeField(text);
         if (text.isEmpty() || text.size() > MaxMessageLength) continue;
 
-        sender_(text);
-        rule.lastTriggeredMs = now;
-        lastGlobalSendMs_ = now;
-        emit log(QStringLiteral("插件 %1 已提交弹幕发送请求。").arg(rule.id));
+        const QString ruleId = rule.id;
+        pendingRules_.insert(ruleId);
+        pendingGlobalSend_ = true;
+        sender_(text, [this, ruleId](bool success) {
+            pendingRules_.remove(ruleId);
+            pendingGlobalSend_ = false;
+            if (!success) {
+                emit log(QStringLiteral("插件 %1 的弹幕发送失败；冷却时间不启动。").arg(ruleId));
+                return;
+            }
+            auto completedRule = plugins_.find(ruleId);
+            if (completedRule != plugins_.end())
+                completedRule->lastTriggeredMs = monotonicClock_.elapsed();
+            lastGlobalSendMs_ = monotonicClock_.elapsed();
+            emit log(QStringLiteral("插件 %1 的弹幕已被 Bilibili 接受，冷却时间开始。").arg(ruleId));
+        });
+        emit log(QStringLiteral("插件 %1 已提交弹幕发送请求。").arg(ruleId));
         break;
     }
 }
