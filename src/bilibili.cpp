@@ -408,22 +408,22 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
     const QJsonObject data = object.value("data").toObject();
     if (cmd == "SEND_GIFT") {
         emit eventReceived(QJsonObject{{"type","gift"},
-            {"uid",data.value("uid").toVariant().toLongLong()},
-            {"user",data.value("uname").toString()},
-            {"gift_id",data.value("giftId").toVariant().toLongLong()},
-            {"gift",data.value("giftName").toString()},
-            {"count",qMax(1,data.value("num").toInt(1))},
-            {"price",data.value("price").toVariant().toLongLong()},
-            {"total_coin",data.value("total_coin").toVariant().toLongLong()},
-            {"coin_type",data.value("coin_type").toString()},
+            {"uid",numericField(data, {"uid", "user_id"})},
+            {"user",textField(data, {"uname", "username", "user"})},
+            {"gift_id",numericField(data, {"giftId", "gift_id", "giftid"})},
+            {"gift",textField(data, {"giftName", "gift_name", "gift"})},
+            {"count",qBound<qint64>(1, numericField(data, {"num", "count"}, 1), 1000000)},
+            {"price",numericField(data, {"price", "unit_price"})},
+            {"total_coin",numericField(data, {"total_coin", "totalCoin"})},
+            {"coin_type",textField(data, {"coin_type", "coinType"})},
             {"timestamp",QDateTime::currentSecsSinceEpoch()}});
         return;
     }
     if (cmd == "SUPER_CHAT_MESSAGE") {
         const QJsonObject user = data.value("user_info").toObject();
         emit eventReceived(QJsonObject{{"type","superchat"},
-            {"uid",user.value("uid").toVariant().toLongLong()},
-            {"user",user.value("uname").toString()},
+            {"uid",numericField(user, {"uid", "user_id"})},
+            {"user",textField(user, {"uname", "username", "user")},
             {"message",data.value("message").toString()},
             {"price",data.value("price").toInt()},
             {"message_id",data.value("id").toVariant().toLongLong()},
@@ -432,11 +432,11 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
     }
     if (cmd == "GUARD_BUY") {
         emit eventReceived(QJsonObject{{"type","guard_buy"},
-            {"uid",data.value("uid").toVariant().toLongLong()},
-            {"user",data.value("username").toString()},
-            {"guard_level",data.value("guard_level").toInt()},
-            {"count",qMax(1,data.value("num").toInt(1))},
-            {"price",data.value("price").toVariant().toLongLong()},
+            {"uid",numericField(data, {"uid", "user_id"})},
+            {"user",textField(data, {"username", "uname", "user"})},
+            {"guard_level",numericField(data, {"guard_level", "guardLevel"})},
+            {"count",qBound<qint64>(1, numericField(data, {"num", "count"}, 1), 1000000)},
+            {"price",numericField(data, {"price", "total_coin"})},
             {"timestamp",QDateTime::currentSecsSinceEpoch()}});
     }
 }
