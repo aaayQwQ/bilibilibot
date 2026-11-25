@@ -136,7 +136,7 @@ void BilibiliClient::beginLogin() {
             reconnect_.start();
             return;
         }
-        ownUid_ = data.value("mid").toVariant().toLongLong();
+        ownUid_ = safeInteger(data.value("mid"), 0);
         emit identityReady(ownUid_);
         const QJsonObject wbi = data.value("wbi_img").toObject();
         auto keyFromUrl = [](const QString &url) {
@@ -170,7 +170,7 @@ void BilibiliClient::loadRoomInfo() {
             reconnect_.start();
             return;
         }
-        realRoomId_ = data.value("room_id").toVariant().toLongLong();
+        realRoomId_ = safeInteger(data.value("room_id"), 0);
         if (realRoomId_ <= 0) realRoomId_ = requestedRoomId_;
         loadDanmuInfo();
     });
