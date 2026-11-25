@@ -1,4 +1,4 @@
-name: Publish v1.0.0
+name: Refresh v1.0.0 Release Assets
 on:
   workflow_run:
     workflows: ["Build and Test"]
@@ -60,6 +60,7 @@ jobs:
           name: bilibilibot v1.0.0 — 弹幕生态，正式开场
           body_path: CHANGELOG.md
           files: release-zips/*.zip
+          overwrite_files: true
           fail_on_unmatched_files: true
           draft: false
           prerelease: false
