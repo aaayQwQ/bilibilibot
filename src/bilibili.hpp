@@ -6,6 +6,8 @@
 #include <QByteArray>
 #include <QJsonObject>
 #include <QMap>
+#include <QQueue>
+#include <QPair>
 #include <QUrl>
 #include <functional>
 
@@ -15,7 +17,7 @@ public:
     BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObject *parent = nullptr);
     void start();
     void stop();
-    void sendDanmaku(const QString &text);
+    void sendDanmaku(const QString &text, quint64 requestId = 0);
     qint64 ownUid() const { return ownUid_; }
 
 signals:
@@ -25,6 +27,7 @@ signals:
     void eventReceived(const QJsonObject &event);
     void connected();
     void disconnected();
+    void danmakuSendFinished(quint64 requestId, const QString &text, bool success, const QString &reason);
 
 private:
     using JsonCallback = std::function<void(const QJsonObject &)>;
@@ -37,6 +40,7 @@ private:
     void parsePackets(const QByteArray &data, int depth = 0);
     void parseOnePacket(const QByteArray &data, int depth);
     void handleCommand(const QJsonObject &object);
+    void dispatchNextDanmaku();
     QString signedWbiQuery(const QMap<QString, QString> &params) const;
     static quint32 readU32(const char *p);
     static quint16 readU16(const char *p);
@@ -54,6 +58,9 @@ private:
     QWebSocket socket_;
     QTimer heartbeat_;
     QTimer reconnect_;
+    QTimer sendThrottle_;
+    QQueue<QPair<quint64, QString>> sendQueue_;
+    bool sendBusy_ = false;
     bool stopped_ = true;
     bool connecting_ = false;
 };
