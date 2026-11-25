@@ -139,7 +139,7 @@ bool Config::load(const QString &path, QString *error) {
         if (!w.isEmpty()) keywords.push_back(w);
     }
 
-    maxReplyChars = qBound(20, s.value("bot/max_reply_chars", 180).toInt(), 500);
+    maxReplyChars = qBound(20, s.value("bot/max_reply_chars", 180).toInt(), 180);
     userCooldownSeconds = qBound(0, s.value("bot/user_cooldown_seconds", 15).toInt(), 3600);
     roomCooldownSeconds = qBound(0, s.value("bot/room_cooldown_seconds", 3).toInt(), 3600);
     replyToSelf = s.value("bot/reply_to_self", true).toBool();
