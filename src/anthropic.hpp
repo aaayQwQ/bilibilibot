@@ -3,12 +3,16 @@
 #include <QObject>
 #include <QNetworkAccessManager>
 #include <QJsonArray>
+#include <QSet>
+
+class QNetworkReply;
 
 class AIClient final : public QObject {
     Q_OBJECT
 public:
     explicit AIClient(const Config &config, QObject *parent = nullptr);
     void generate(const QString &userName, const QString &message, const QJsonArray &history);
+    void stop();
 
 signals:
     void finished(const QString &reply);
@@ -17,4 +21,6 @@ signals:
 private:
     Config config_;
     QNetworkAccessManager network_;
+    QSet<QNetworkReply *> pendingReplies_;
+    bool stopped_ = false;
 };
