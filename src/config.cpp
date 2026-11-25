@@ -60,7 +60,8 @@ QMap<QString, QString> parseCookieFields(QString raw) {
 
 // Supports the Netscape cookies.txt format exported by "Get cookies.txt LOCALLY".
 // Plain Cookie headers are accepted as a convenience, too.
-QString readCookieFile(const QString &configPath) {
+QString readCookieFile(const QString &configPath, bool *invalidUtf8 = nullptr) {
+    if (invalidUtf8) *invalidUtf8 = false;
     const QString cookiePath = QFileInfo(configPath).dir().filePath("cookie.txt");
     const QFileInfo cookieInfo(cookiePath);
     if (cookieInfo.isSymLink() || !cookieInfo.isFile() || cookieInfo.size() > 1024 * 1024)
@@ -73,6 +74,7 @@ QString readCookieFile(const QString &configPath) {
     const QByteArray rawBytes = file.readAll();
     const QString decoded = QString::fromUtf8(rawBytes.constData(), rawBytes.size());
     if (decoded.toUtf8() != rawBytes) {
+        if (invalidUtf8) *invalidUtf8 = true;
         qWarning().noquote() << QStringLiteral("[SECURITY] Cookie 文件不是有效 UTF-8，拒绝读取：%1").arg(cookieInfo.absoluteFilePath());
         return {};
     }
@@ -145,7 +147,12 @@ bool Config::load(const QString &path, QString *error) {
     QSettings s(path, QSettings::IniFormat);
     roomId = s.value("bilibili/room_id", 0).toLongLong();
     // Cookie is deliberately kept out of config.ini. Load it from cookie.txt.
-    cookie = readCookieFile(path);
+    bool invalidCookieUtf8 = false;
+    cookie = readCookieFile(path, &invalidCookieUtf8);
+    if (invalidCookieUtf8) {
+        if (error) *error = "cookie.txt 不是有效 UTF-8 编码，已拒绝读取。请重新导出 Netscape 格式 Cookie 文件。";
+        return false;
+    }
     const QMap<QString, QString> cookieFields = parseCookieFields(cookie);
 
     aiProtocol = s.value("ai/protocol", "anthropic").toString().trimmed().toLower();
