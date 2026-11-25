@@ -8,6 +8,7 @@
 #include <QNetworkRequest>
 #include <QUrlQuery>
 #include <QRegularExpression>
+#include <QSharedPointer>
 #include <QMap>
 #include <QByteArray>
 #include <QStringList>
@@ -461,12 +462,13 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
 void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId) {
     QString clean;
     clean.reserve(qMin<qsizetype>(text.size(), 180));
-    for (const QChar ch : text) {
-        const auto category = ch.category();
+    const QVector<uint> codePoints = text.toUcs4();
+    for (uint codePoint : codePoints) {
+        const auto category = QChar::category(codePoint);
         if (category == QChar::Other_Control || category == QChar::Other_Format ||
             category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
             continue;
-        clean.append(ch);
+        clean.append(QString::fromUcs4(&codePoint, 1));
     }
     clean = clean.simplified();
     if (stopped_ || clean.isEmpty() || clean.size() > 180 || csrf_.isEmpty() || realRoomId_ <= 0) {
