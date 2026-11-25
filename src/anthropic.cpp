@@ -53,7 +53,8 @@ void AIClient::generate(qint64 uid, const QString &userName, const QString &mess
 
     const QUrl url(endpoint);
     if (!url.isValid() || url.scheme() != "https" || url.host().isEmpty() ||
-        !url.userInfo().isEmpty() || !url.query().isEmpty() || !url.fragment().isEmpty()) {
+        !url.userInfo().isEmpty() || !url.query().isEmpty() || !url.fragment().isEmpty() ||
+        !config_.aiAllowedHosts.contains(url.host().toLower())) {
         emit failed(uid, userName, message, "AI Base URL 无效：必须是无用户信息、无查询参数的 HTTPS 地址。");
         return;
     }
