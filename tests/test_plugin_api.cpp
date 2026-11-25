@@ -2,6 +2,7 @@
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QDir>
 #include <QJsonDocument>
 
@@ -86,6 +87,17 @@ private slots:
         const QByteArray json = R"({"schema_version":1,"id":"same","enabled":true,"event":"gift","cooldown_seconds":0,"action":{"type":"send_danmaku","template":"ok"}})";
         QVERIFY(writeManifest(dir.path(), "a.json", json));
         QVERIFY(writeManifest(dir.path(), "b.json", json));
+        PluginManager manager(dir.path(), true, true, [](const QString &) {});
+        manager.load(); QCOMPARE(manager.pluginCount(), 1);
+    }
+    void symbolicLinkManifestIsIgnored() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        QVERIFY(writeManifest(dir.path(), "real.json",
+            R"({"schema_version":1,"id":"real","enabled":true,"event":"gift","action":{"type":"send_danmaku","template":"ok"}})"));
+        const QString target = QDir(dir.path()).filePath("real.json");
+        const QString link = QDir(dir.path()).filePath("linked.json");
+        if (!QFile::link(target, link) || !QFileInfo(link).isSymLink())
+            QSKIP("Symbolic links are unavailable in this test environment.");
         PluginManager manager(dir.path(), true, true, [](const QString &) {});
         manager.load(); QCOMPARE(manager.pluginCount(), 1);
     }
