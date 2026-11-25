@@ -72,3 +72,4 @@ jobs:
           fi
           gh release upload v1.0.2 release-zips/*.zip \
             --repo "$GITHUB_REPOSITORY" --clobber
+
