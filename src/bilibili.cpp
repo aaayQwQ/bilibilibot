@@ -53,7 +53,9 @@ BilibiliClient::BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObj
     connect(&socket_, &QWebSocket::textMessageReceived, this, [this](const QString &text) {
         parsePackets(text.toUtf8());
     });
-    connect(&socket_, &QWebSocket::binaryMessageReceived, this, [this](const QByteArray &message) {\n        parsePackets(message);\n    });
+    connect(&socket_, &QWebSocket::binaryMessageReceived, this, [this](const QByteArray &message) {
+        parsePackets(message);
+    });
     connect(&socket_, &QWebSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
         emit log("WebSocket 错误：" + socket_.errorString());
     });
