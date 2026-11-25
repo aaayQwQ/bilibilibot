@@ -21,7 +21,7 @@ bool validId(const QString &id) {
 
 QString safeField(QString value) {
     QString clean;
-    clean.reserve(qMin(value.size(), MaxVariableLength));
+    clean.reserve(qMin<qsizetype>(value.size(), MaxVariableLength));
     for (const QChar ch : value) {
         const auto category = ch.category();
         if (category == QChar::Other_Control || category == QChar::Other_Format ||
