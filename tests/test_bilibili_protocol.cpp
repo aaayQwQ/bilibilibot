@@ -10,12 +10,12 @@ private slots:
     void rejectsTruncatedHeader() {
         BilibiliClient client(1, {}, {});
         QSignalSpy logs(&client, &BilibiliClient::log);
-        client.parsePackets(QByteArray(7, '\\0'));
+        client.parsePackets(QByteArray(7, '\0'));
         QVERIFY(!logs.isEmpty());
     }
     void rejectsLengthBeyondBuffer() {
         BilibiliClient client(1, {}, {});
-        QByteArray packet(16, '\\0');
+        QByteArray packet(16, '\0');
         packet[0] = 0; packet[1] = 0; packet[2] = 0; packet[3] = 32;
         packet[4] = 0; packet[5] = 16;
         QSignalSpy logs(&client, &BilibiliClient::log);
