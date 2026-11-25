@@ -44,6 +44,9 @@ BilibiliClient::BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObj
     heartbeat_.setInterval(30000);
     reconnect_.setInterval(5000);
     reconnect_.setSingleShot(true);
+    sendThrottle_.setSingleShot(true);
+    sendThrottle_.setInterval(1000);
+    connect(&sendThrottle_, &QTimer::timeout, this, &BilibiliClient::dispatchNextDanmaku);
     connect(&heartbeat_, &QTimer::timeout, this, [this]() {
         if (socket_.state() == QAbstractSocket::ConnectedState)
             sendPacket(1, 2, QByteArray());
@@ -441,8 +444,25 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
     }
 }
 
-void BilibiliClient::sendDanmaku(const QString &text) {
-    if (stopped_ || text.trimmed().isEmpty() || csrf_.isEmpty() || realRoomId_ <= 0) return;
+void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId) {
+    const QString clean = text.simplified();
+    if (stopped_ || clean.isEmpty() || clean.size() > 180 || csrf_.isEmpty() || realRoomId_ <= 0) {
+        emit danmakuSendFinished(requestId, clean, false, "弹幕为空、超长或客户端尚未就绪。");
+        return;
+    }
+    if (sendQueue_.size() >= 30) {
+        emit danmakuSendFinished(requestId, clean, false, "发送队列已满，已拒绝本次弹幕。");
+        return;
+    }
+    sendQueue_.enqueue(qMakePair(requestId, clean));
+    if (!sendBusy_ && !sendThrottle_.isActive()) dispatchNextDanmaku();
+}
+
+void BilibiliClient::dispatchNextDanmaku() {
+    if (stopped_ || sendBusy_ || sendQueue_.isEmpty()) return;
+    const auto item = sendQueue_.dequeue();
+    const quint64 requestId = item.first;
+    const QString text = item.second;
     QUrl url("https://api.live.bilibili.com/msg/send");
     QNetworkRequest request(url);
     request.setTransferTimeout(30000);
@@ -460,24 +480,30 @@ void BilibiliClient::sendDanmaku(const QString &text) {
     form.addQueryItem("rnd", QString::number(QDateTime::currentSecsSinceEpoch()));
     form.addQueryItem("csrf", csrf_);
     form.addQueryItem("csrf_token", csrf_);
+    sendBusy_ = true;
     QNetworkReply *reply = network_.post(request, form.query(QUrl::FullyEncoded).toUtf8());
-    reply->setReadBufferSize(1024 * 1024);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        const QByteArray data = reply->readAll();
+    connect(reply, &QNetworkReply::finished, this, [this, reply, requestId, text]() {
         const auto error = reply->error();
         const QString errorString = reply->errorString();
+        const QByteArray data = reply->isOpen() ? reply->readAll() : QByteArray();
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         reply->deleteLater();
-
+        sendBusy_ = false;
         if (stopped_) return;
-        if (error != QNetworkReply::NoError) {
-            emit log("发送弹幕网络错误：" + errorString);
-            return;
+        bool success = error == QNetworkReply::NoError && status >= 200 && status < 300;
+        QString reason;
+        if (!success) {
+            reason = error != QNetworkReply::NoError ? errorString : QString("HTTP %1").arg(status);
+        } else {
+            QJsonParseError parseError{};
+            const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+            success = parseError.error == QJsonParseError::NoError && doc.isObject() &&
+                doc.object().value("code").toInt(-1) == 0;
+            if (!success) reason = QString::fromUtf8(data.left(600));
         }
-        QJsonParseError e{};
-        const auto doc = QJsonDocument::fromJson(data, &e);
-        if (e.error != QJsonParseError::NoError || doc.object().value("code").toInt(-1) != 0)
-            emit log("发送弹幕失败：" + QString::fromUtf8(data.left(600)));
-        else
-            emit log("AI 回复已发送。");
+        emit danmakuSendFinished(requestId, text, success, reason);
+        if (success) emit log("弹幕发送成功。");
+        else emit log("弹幕发送失败：" + reason);
+        if (!sendQueue_.isEmpty()) sendThrottle_.start();
     });
 }
