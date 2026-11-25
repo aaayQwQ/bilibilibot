@@ -2,6 +2,7 @@
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QDir>
 
 class ConfigTest final : public QObject {
@@ -33,6 +34,22 @@ private slots:
         QCOMPARE(config.roomId, qint64(12345));
         QVERIFY(config.cookie.contains("SESSDATA=fake-session"));
         QCOMPARE(config.aiAllowedHosts, QStringList{"api.example.com"});
+    }
+    void rejectsSymlinkedCookieFile() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        const QByteArray ini =
+            "[bilibili]\nroom_id=1\n[ai]\nprotocol=openai\n"
+            "base_url=https://api.example.com\nallowed_hosts=api.example.com\n"
+            "api_key=x\nmodel=y\n[bot]\nkeywords=@AI\n";
+        QVERIFY(writeFile(QDir(dir.path()).filePath("config.ini"), ini));
+        const QString targetPath = QDir(dir.path()).filePath("cookie-target.txt");
+        QVERIFY(writeFile(targetPath, "SESSDATA=fake; bili_jct=fake"));
+        QFile target(targetPath);
+        const QString cookiePath = QDir(dir.path()).filePath("cookie.txt");
+        if (!target.link(cookiePath) || !QFileInfo(cookiePath).isSymLink())
+            QSKIP("Symbolic links are unavailable in this test environment.");
+        Config config; QString error;
+        QVERIFY(!config.load(QDir(dir.path()).filePath("config.ini"), &error));
     }
     void rejectsHostNotInAllowlist() {
         QTemporaryDir dir; QVERIFY(dir.isValid());
