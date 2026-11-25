@@ -32,7 +32,7 @@ QString safeField(QString value) {
             continue;
         }
         const auto category = ch.category();
-        if (category == QChar::Other_Control || category == QChar::Other_Format ||
+        if (category == QChar::Other_Control || (category == QChar::Other_Format && ch.unicode() != 0x200D) ||
             category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
             continue;
         if (clean.size() >= MaxVariableLength) break;
