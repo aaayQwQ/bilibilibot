@@ -23,15 +23,20 @@ bool validId(const QString &id) {
 QString safeField(QString value) {
     QString clean;
     clean.reserve(qMin<qsizetype>(value.size(), MaxVariableLength));
-    const QVector<uint> codePoints = value.toUcs4();
-    for (uint codePoint : codePoints) {
-        const auto category = QChar::category(codePoint);
+    for (qsizetype i = 0; i < value.size(); ++i) {
+        const QChar ch = value.at(i);
+        if (ch.isHighSurrogate() && i + 1 < value.size() && value.at(i + 1).isLowSurrogate()) {
+            if (clean.size() + 2 > MaxVariableLength) break;
+            clean.append(ch);
+            clean.append(value.at(++i));
+            continue;
+        }
+        const auto category = ch.category();
         if (category == QChar::Other_Control || category == QChar::Other_Format ||
             category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
             continue;
-        const QString character = QString::fromUcs4(&codePoint, 1);
-        if (clean.size() + character.size() > MaxVariableLength) break;
-        clean.append(character);
+        if (clean.size() >= MaxVariableLength) break;
+        clean.append(ch);
     }
     return clean.simplified();
 }
