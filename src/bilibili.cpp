@@ -10,6 +10,7 @@
 #include <QRegularExpression>
 #include <QMap>
 #include <QByteArray>
+#include <QStringList>
 #include <utility>
 
 namespace {
@@ -431,8 +432,8 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
             {"uid",numericField(user, {"uid", "user_id"})},
             {"user",textField(user, {"uname", "username", "user"})},
             {"message",data.value("message").toString()},
-            {"price",data.value("price").toInt()},
-            {"message_id",data.value("id").toVariant().toLongLong()},
+            {"price",numericField(data, {"price", "total_coin"})},
+            {"message_id",numericField(data, {"id", "message_id"})},
             {"timestamp",QDateTime::currentSecsSinceEpoch()}});
         return;
     }
