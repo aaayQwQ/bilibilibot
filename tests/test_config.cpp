@@ -51,6 +51,34 @@ private slots:
         Config config; QString error;
         QVERIFY(!config.load(QDir(dir.path()).filePath("config.ini"), &error));
     }
+    void rejectsInvalidUtf8Cookie() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        const QByteArray ini =
+            "[bilibili]\\nroom_id=1\\n[ai]\\nprotocol=openai\\n"
+            "base_url=https://api.example.com\\nallowed_hosts=api.example.com\\n"
+            "api_key=x\\nmodel=y\\n[bot]\\nkeywords=@AI\\n";
+        QVERIFY(writeFile(QDir(dir.path()).filePath("config.ini"), ini));
+        QByteArray invalid = "SESSDATA=valid; bili_jct=valid";
+        invalid.append(char(0xff));
+        QVERIFY(writeFile(QDir(dir.path()).filePath("cookie.txt"), invalid));
+        Config config; QString error;
+        QVERIFY(!config.load(QDir(dir.path()).filePath("config.ini"), &error));
+        QVERIFY(error.contains("cookie.txt"));
+    }
+    void rejectsExpiredNetscapeCookies() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        const QByteArray ini =
+            "[bilibili]\\nroom_id=1\\n[ai]\\nprotocol=openai\\n"
+            "base_url=https://api.example.com\\nallowed_hosts=api.example.com\\n"
+            "api_key=x\\nmodel=y\\n[bot]\\nkeywords=@AI\\n";
+        const QByteArray expired =
+            "www.bilibili.com\\tTRUE\\t/\\tTRUE\\t1\\tSESSDATA\\told-session\\n"
+            "www.bilibili.com\\tTRUE\\t/\\tTRUE\\t1\\tbili_jct\\told-csrf\\n";
+        QVERIFY(writeFile(QDir(dir.path()).filePath("config.ini"), ini));
+        QVERIFY(writeFile(QDir(dir.path()).filePath("cookie.txt"), expired));
+        Config config; QString error;
+        QVERIFY(!config.load(QDir(dir.path()).filePath("config.ini"), &error));
+    }
     void rejectsHostNotInAllowlist() {
         QTemporaryDir dir; QVERIFY(dir.isValid());
         const QByteArray ini =
