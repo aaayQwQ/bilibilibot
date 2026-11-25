@@ -9,7 +9,7 @@
 #include <QUrlQuery>
 #include <QRegularExpression>
 #include <QMap>
-#include <zlib.h>
+#include <QDebug>
 #include <utility>
 
 namespace {
@@ -18,6 +18,8 @@ const int kHeaderSize = 16;
 
 BilibiliClient::BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObject *parent)
     : QObject(parent), requestedRoomId_(roomId), cookie_(std::move(cookie)), csrf_(std::move(csrf)) {
+    socket_.setMaxAllowedIncomingFrameSize(4 * 1024 * 1024);
+    socket_.setMaxAllowedIncomingMessageSize(8 * 1024 * 1024);
     heartbeat_.setInterval(30000);
     reconnect_.setInterval(5000);
     reconnect_.setSingleShot(true);
@@ -185,10 +187,13 @@ void BilibiliClient::connectSocket(const QString &host, int port, const QString 
 
 void BilibiliClient::requestJson(const QUrl &url, JsonCallback callback) {
     QNetworkRequest request(url);
+    request.setTransferTimeout(30000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setRawHeader("Cookie", cookie_.toUtf8());
     request.setRawHeader("User-Agent", "Mozilla/5.0 BilibiliBot/0.1");
     request.setRawHeader("Referer", "https://live.bilibili.com/");
     QNetworkReply *reply = network_.get(request);
+    reply->setReadBufferSize(1024 * 1024);
     connect(reply, &QNetworkReply::finished, this, [this, reply, callback]() {
         const QByteArray data = reply->readAll();
         const auto error = reply->error();
@@ -271,23 +276,20 @@ void BilibiliClient::parseOnePacket(const QByteArray &packet) {
     }
     if (operation != 5) return;
     if (version == 2) {
-        z_stream stream{};
-        stream.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(body.constData()));
-        stream.avail_in = uInt(body.size());
-        if (inflateInit(&stream) != Z_OK) return;
-        QByteArray output;
-        char buffer[16384];
-        int result = Z_OK;
-        while (result == Z_OK) {
-            stream.next_out = reinterpret_cast<Bytef *>(buffer);
-            stream.avail_out = sizeof(buffer);
-            result = inflate(&stream, Z_NO_FLUSH);
-            const int produced = int(sizeof(buffer) - stream.avail_out);
-            if (produced > 0) output.append(buffer, produced);
-            if (output.size() > 8 * 1024 * 1024) { result = Z_DATA_ERROR; break; }
-        }
-        inflateEnd(&stream);
-        if (result == Z_STREAM_END) parsePackets(output);
+        // Qt qUncompress consumes the zlib stream with a four-byte output-size prefix.
+        // The declared maximum is 8 MiB; oversized output is rejected.
+        QByteArray wrapped;
+        wrapped.reserve(body.size() + 4);
+        wrapped.append(char(0x00));
+        wrapped.append(char(0x80));
+        wrapped.append(char(0x00));
+        wrapped.append(char(0x00));
+        wrapped.append(body);
+        const QByteArray output = qUncompress(wrapped);
+        if (!output.isEmpty() && output.size() <= 8 * 1024 * 1024)
+            parsePackets(output);
+        else
+            emit log("忽略无效或超限的压缩弹幕数据包。");
         return;
     }
     if (version == 0 || version == 1) {
@@ -300,15 +302,53 @@ void BilibiliClient::parseOnePacket(const QByteArray &packet) {
 
 void BilibiliClient::handleCommand(const QJsonObject &object) {
     const QString cmd = object.value("cmd").toString();
-    if (!cmd.startsWith("DANMU_MSG")) return;
-    const QJsonArray info = object.value("info").toArray();
-    if (info.size() < 3) return;
-    const QString text = info.at(1).toString().trimmed();
-    const QJsonArray user = info.at(2).toArray();
-    if (text.isEmpty() || user.size() < 2) return;
-    const qint64 uid = user.at(0).toVariant().toLongLong();
-    const QString name = user.at(1).toString();
-    emit danmaku(uid, name, text);
+    if (cmd.startsWith("DANMU_MSG")) {
+        const QJsonArray info = object.value("info").toArray();
+        if (info.size() < 3) return;
+        const QString text = info.at(1).toString().trimmed();
+        const QJsonArray user = info.at(2).toArray();
+        if (text.isEmpty() || user.size() < 2) return;
+        const qint64 uid = user.at(0).toVariant().toLongLong();
+        const QString name = user.at(1).toString();
+        emit danmaku(uid, name, text);
+        emit eventReceived(QJsonObject{{"type","danmaku"},{"uid",uid},{"user",name},
+            {"text",text},{"timestamp",QDateTime::currentSecsSinceEpoch()}});
+        return;
+    }
+    const QJsonObject data = object.value("data").toObject();
+    if (cmd == "SEND_GIFT") {
+        emit eventReceived(QJsonObject{{"type","gift"},
+            {"uid",data.value("uid").toVariant().toLongLong()},
+            {"user",data.value("uname").toString()},
+            {"gift_id",data.value("giftId").toVariant().toLongLong()},
+            {"gift",data.value("giftName").toString()},
+            {"count",qMax(1,data.value("num").toInt(1))},
+            {"price",data.value("price").toVariant().toLongLong()},
+            {"total_coin",data.value("total_coin").toVariant().toLongLong()},
+            {"coin_type",data.value("coin_type").toString()},
+            {"timestamp",QDateTime::currentSecsSinceEpoch()}});
+        return;
+    }
+    if (cmd == "SUPER_CHAT_MESSAGE") {
+        const QJsonObject user = data.value("user_info").toObject();
+        emit eventReceived(QJsonObject{{"type","superchat"},
+            {"uid",user.value("uid").toVariant().toLongLong()},
+            {"user",user.value("uname").toString()},
+            {"message",data.value("message").toString()},
+            {"price",data.value("price").toInt()},
+            {"message_id",data.value("id").toVariant().toLongLong()},
+            {"timestamp",QDateTime::currentSecsSinceEpoch()}});
+        return;
+    }
+    if (cmd == "GUARD_BUY") {
+        emit eventReceived(QJsonObject{{"type","guard_buy"},
+            {"uid",data.value("uid").toVariant().toLongLong()},
+            {"user",data.value("username").toString()},
+            {"guard_level",data.value("guard_level").toInt()},
+            {"count",qMax(1,data.value("num").toInt(1))},
+            {"price",data.value("price").toVariant().toLongLong()},
+            {"timestamp",QDateTime::currentSecsSinceEpoch()}});
+    }
 }
 
 void BilibiliClient::sendDanmaku(const QString &text) {
@@ -329,6 +369,7 @@ void BilibiliClient::sendDanmaku(const QString &text) {
     form.addQueryItem("csrf", csrf_);
     form.addQueryItem("csrf_token", csrf_);
     QNetworkReply *reply = network_.post(request, form.query(QUrl::FullyEncoded).toUtf8());
+    reply->setReadBufferSize(1024 * 1024);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         const QByteArray data = reply->readAll();
         const auto error = reply->error();
