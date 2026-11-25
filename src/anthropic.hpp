@@ -11,12 +11,12 @@ class AIClient final : public QObject {
     Q_OBJECT
 public:
     explicit AIClient(const Config &config, QObject *parent = nullptr);
-    void generate(const QString &userName, const QString &message, const QJsonArray &history);
+    void generate(qint64 uid, const QString &userName, const QString &message, const QJsonArray &history);
     void stop();
 
 signals:
-    void finished(const QString &reply);
-    void failed(const QString &reason);
+    void finished(qint64 uid, const QString &userName, const QString &reply);
+    void failed(qint64 uid, const QString &userName, const QString &reason);
 
 private:
     Config config_;
