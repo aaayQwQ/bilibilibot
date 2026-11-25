@@ -26,7 +26,7 @@ void AIClient::stop() {
 
 void AIClient::generate(qint64 uid, const QString &userName, const QString &message, const QJsonArray &history) {
     if (stopped_) {
-        emit failed(uid, userName, "AI 客户端已停止，拒绝提交新请求。");
+        emit failed(uid, userName, message, "AI 客户端已停止，拒绝提交新请求。");
         return;
     }
 
@@ -54,7 +54,7 @@ void AIClient::generate(qint64 uid, const QString &userName, const QString &mess
     const QUrl url(endpoint);
     if (!url.isValid() || url.scheme() != "https" || url.host().isEmpty() ||
         !url.userInfo().isEmpty() || !url.query().isEmpty() || !url.fragment().isEmpty()) {
-        emit failed(uid, userName, "AI Base URL 无效：必须是无用户信息、无查询参数的 HTTPS 地址。");
+        emit failed(uid, userName, message, "AI Base URL 无效：必须是无用户信息、无查询参数的 HTTPS 地址。");
         return;
     }
 
@@ -119,7 +119,7 @@ void AIClient::generate(qint64 uid, const QString &userName, const QString &mess
     QElapsedTimer elapsed;
     elapsed.start();
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, uid, userName, useOpenAI, url, elapsed]() mutable {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, uid, userName, message, useOpenAI, url, elapsed]() mutable {
         const qint64 elapsedMs = elapsed.isValid() ? elapsed.elapsed() : -1;
 
         pendingReplies_.remove(reply);
@@ -151,7 +151,7 @@ void AIClient::generate(qint64 uid, const QString &userName, const QString &mess
                 detail = networkError;
             }
 
-            emit failed(uid, userName, QString("%1 API 请求失败（HTTP %2，主机 %3）：%4")
+            emit failed(uid, userName, message, QString("%1 API 请求失败（HTTP %2，主机 %3）：%4")
                 .arg(useOpenAI ? "OpenAI-compatible" : "Anthropic")
                 .arg(status)
                 .arg(url.host(), detail));
@@ -161,7 +161,7 @@ void AIClient::generate(qint64 uid, const QString &userName, const QString &mess
         QJsonParseError parseError{};
         const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
         if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-            emit failed(uid, userName, QString("AI 返回了无法解析的 JSON（%1 字节）。").arg(data.size()));
+            emit failed(uid, userName, message, QString("AI 返回了无法解析的 JSON（%1 字节）。").arg(data.size()));
             return;
         }
 
@@ -192,9 +192,9 @@ void AIClient::generate(qint64 uid, const QString &userName, const QString &mess
 
         result = result.trimmed();
         if (result.isEmpty()) {
-            emit failed(uid, userName, "AI 没有返回文本内容（请检查模型、思考模式及服务商响应格式）。");
+            emit failed(uid, userName, message, "AI 没有返回文本内容（请检查模型、思考模式及服务商响应格式）。");
             return;
         }
-        emit finished(uid, userName, result);
+        emit finished(uid, userName, message, result);
     });
 }
