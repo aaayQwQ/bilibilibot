@@ -507,6 +507,6 @@ void BilibiliClient::dispatchNextDanmaku() {
         emit danmakuSendFinished(requestId, text, success, reason);
         if (success) emit log("弹幕发送成功。");
         else emit log("弹幕发送失败：" + reason);
-        if (!sendQueue_.isEmpty()) sendThrottle_.start();
+        sendThrottle_.start();
     });
 }
