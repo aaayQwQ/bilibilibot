@@ -9,6 +9,7 @@
 #include <QUrlQuery>
 #include <QRegularExpression>
 #include <QMap>
+#include <QByteArray>
 #include <utility>
 
 namespace {
@@ -32,7 +33,7 @@ BilibiliClient::BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObj
         QJsonObject auth{
             {"uid", ownUid_},
             {"roomid", realRoomId_},
-            {"protover", 0},
+            {"protover", 2},
             {"platform", "web"},
             {"type", 2},
             {"key", danmuToken_}
@@ -67,7 +68,13 @@ void BilibiliClient::stop() {
     stopped_ = true;
     heartbeat_.stop();
     reconnect_.stop();
-    socket_.close();
+    // Shutdown must not leave asynchronous socket/network work alive while
+    // stack-owned Qt objects are being destroyed after QCoreApplication exits.
+    socket_.abort();
+    const auto replies = network_.findChildren<QNetworkReply *>();
+    for (QNetworkReply *reply : replies) {
+        if (reply && reply->isRunning()) reply->abort();
+    }
 }
 
 void BilibiliClient::beginLogin() {
@@ -250,46 +257,100 @@ void BilibiliClient::sendPacket(quint16 version, quint32 operation, const QByteA
         socket_.sendBinaryMessage(makePacket(version, operation, body));
 }
 
-void BilibiliClient::parsePackets(const QByteArray &data) {
+void BilibiliClient::parsePackets(const QByteArray &data, int depth) {
+    constexpr int MaxTransportBytes = 8 * 1024 * 1024;
+    constexpr int MaxPacketsPerMessage = 4096;
+    constexpr int MaxNestingDepth = 2;
+
+    if (data.isEmpty() || data.size() > MaxTransportBytes || depth > MaxNestingDepth) {
+        emit log("弹幕数据超过安全解析限制，已丢弃。");
+        return;
+    }
+
     int offset = 0;
-    while (offset + kHeaderSize <= data.size()) {
+    int packetCount = 0;
+    while (offset < data.size()) {
+        if (data.size() - offset < kHeaderSize) {
+            emit log("弹幕数据包头不完整，已丢弃剩余数据。");
+            return;
+        }
+        if (++packetCount > MaxPacketsPerMessage) {
+            emit log("单条 WebSocket 消息包含过多协议包，已停止解析。");
+            return;
+        }
+
         const quint32 packetLength = readU32(data.constData() + offset);
         const quint16 headerLength = readU16(data.constData() + offset + 4);
         if (packetLength < kHeaderSize || headerLength != kHeaderSize ||
-            packetLength > 8U * 1024U * 1024U ||
-            packetLength > quint32(data.size() - offset)) break;
-        const QByteArray packet = data.mid(offset, int(packetLength));
-        parseOnePacket(packet);
+            packetLength > quint32(MaxTransportBytes) ||
+            packetLength > quint32(data.size() - offset)) {
+            emit log("弹幕数据包长度或包头无效，已丢弃。");
+            return;
+        }
+
+        parseOnePacket(data.mid(offset, int(packetLength)), depth);
         offset += int(packetLength);
     }
 }
 
-void BilibiliClient::parseOnePacket(const QByteArray &packet) {
+void BilibiliClient::parseOnePacket(const QByteArray &packet, int depth) {
+    constexpr int MaxDecompressedBytes = 8 * 1024 * 1024;
+    constexpr int MaxNestingDepth = 2;
+
     if (packet.size() < kHeaderSize) return;
     const quint16 version = readU16(packet.constData() + 6);
     const quint32 operation = readU32(packet.constData() + 8);
     const QByteArray body = packet.mid(kHeaderSize);
+
     if (operation == 8) {
         QJsonParseError e{};
         const auto doc = QJsonDocument::fromJson(body, &e);
-        if (e.error == QJsonParseError::NoError && doc.object().value("code").toInt(-1) == 0) {
+        if (e.error == QJsonParseError::NoError && doc.isObject() &&
+            doc.object().value("code").toInt(-1) == 0) {
             heartbeat_.start();
             emit connected();
             emit log("直播间鉴权成功，开始接收弹幕。");
         } else {
-            emit log("直播间鉴权失败：" + QString::fromUtf8(body));
+            emit log("直播间鉴权失败：认证响应无效或服务器拒绝连接。");
             socket_.close();
         }
         return;
     }
+
     if (operation != 5) return;
-    if (version == 2 || version == 3) {
-        // The client requests uncompressed protocol frames (protover=0).
-        // Reject compressed payloads rather than using an API that cannot enforce
-        // a strict decompressed-size ceiling on untrusted input.
-        emit log("收到未协商的压缩弹幕数据包，已拒绝处理。");
+
+    if (version == 2) {
+        if (depth >= MaxNestingDepth || body.size() < 6) {
+            emit log("压缩弹幕包层级或长度超出限制，已拒绝处理。");
+            return;
+        }
+
+        // Bilibili sends a standard zlib stream without Qt's four-byte
+        // qCompress size prefix. qUncompress uses that prefix as its output
+        // allocation ceiling, so prepend our own hard limit before decoding.
+        QByteArray qtWrapped;
+        qtWrapped.reserve(body.size() + 4);
+        const quint32 limit = quint32(MaxDecompressedBytes);
+        qtWrapped.append(char((limit >> 24) & 0xff));
+        qtWrapped.append(char((limit >> 16) & 0xff));
+        qtWrapped.append(char((limit >> 8) & 0xff));
+        qtWrapped.append(char(limit & 0xff));
+        qtWrapped += body;
+
+        const QByteArray decompressed = qUncompress(qtWrapped);
+        if (decompressed.isEmpty()) {
+            emit log("zlib 弹幕数据解压失败或超过 8 MiB 上限。");
+            return;
+        }
+        parsePackets(decompressed, depth + 1);
         return;
     }
+
+    if (version == 3) {
+        emit log("服务器返回 Brotli 压缩数据，但客户端仅协商 zlib（protover=2），已拒绝。");
+        return;
+    }
+
     if (version == 0 || version == 1) {
         QJsonParseError e{};
         const auto doc = QJsonDocument::fromJson(body, &e);
