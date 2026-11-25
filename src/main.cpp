@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QDateTime>
+#include <QDir>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
