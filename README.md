@@ -10,8 +10,8 @@
 - 新增 JSON 声明式插件；插件不执行脚本或本机代码。
 - 插件总开关与发送弹幕权限分离，默认全部关闭。
 - AI 服务强制 HTTPS；敏感请求不自动跟随重定向。
-- 为网络请求设置超时、读取缓冲和 WebSocket 消息上限。
-- 默认协商未压缩弹幕帧，拒绝未协商的压缩数据，避免解压炸弹风险。
+- 为网络请求设置超时、读取缓冲和 WebSocket 消息上限；退出时先解除异步回调再取消请求。
+- 按 Bilibili 协议协商 zlib（protover=2），限制单条消息与解压后数据均不超过 8 MiB；拒绝 Brotli 等未支持协议。
 - 加入 Qt Test 自动化测试和 GitHub CodeQL C++ 安全扫描。
 - GitHub Actions 构建 Windows x64、Linux x64、macOS x64。
 
@@ -67,12 +67,18 @@ Windows MSVC 需要安装 Qt 6 对应的 MSVC Kit。GitHub Actions 会自动构�
 
 ### v1.0.0 —「弹幕生态，正式开场」 (2026-11-25)
 
+#### 修复版构建（2026-11-25）
+- 修复 WebSocket 信号槽参数适配，恢复 Windows、Linux、macOS 三平台构建。
+- 按 Bilibili 协议协商 zlib 弹幕帧，并限制解压数据大小。
+- 修复网络请求完成回调在对象销毁期间读取已安排销毁的 reply 的生命周期问题。
+- 退出时先断开请求回调，再取消网络请求，避免关闭阶段继续触发重连或业务回调。
+
 - 礼物、醒目留言、舰长购买事件正式接入。
 - JSON 声明式插件 API 与礼物感谢示例上线。
 - 插件默认关闭，发送弹幕需要二次授权。
 - AI 请求强制 HTTPS，关闭敏感请求的自动重定向。
 - 增加网络超时、缓冲区及压缩数据大小限制。
-- 移除项目对 zlib C API 的直接调用，并关闭未协商的压缩帧。
+- 通过 Qt 的 qUncompress 处理 Bilibili zlib 数据，不直接调用 zlib C API。
 - 增加 Qt Test 与 GitHub CodeQL C++ 安全分析。
 - 统一版本号为 1.0.0。
 
