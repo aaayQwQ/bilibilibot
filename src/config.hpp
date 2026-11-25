@@ -10,6 +10,7 @@ struct Config {
     QString aiBaseUrl;
     QString aiApiKey;
     QString aiModel;
+    QStringList aiAllowedHosts;
     QString systemPrompt;
     QStringList keywords;
     bool thinking = false;
