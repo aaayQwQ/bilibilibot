@@ -1,6 +1,7 @@
 #include "anthropic.hpp"
 #include "bilibili.hpp"
 #include "config.hpp"
+#include "plugin_api.hpp"
 
 #include <QCoreApplication>
 #include <QCommandLineParser>
@@ -23,7 +24,7 @@ struct ChatRequest {
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName("bilibilibot");
-    QCoreApplication::setApplicationVersion("0.1.0");
+    QCoreApplication::setApplicationVersion("1.0.0");
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Bilibili live-room AI danmaku bot");
@@ -46,12 +47,18 @@ int main(int argc, char *argv[]) {
             << "] " << message << Qt::endl;
     };
 
-    log("bilibilibot 0.1.0 启动。");
+    log("bilibilibot 1.0.0 启动。");
     log(QString("直播间：%1；关键词：%2").arg(config.roomId).arg(config.keywords.join(" | ")));
     log("运行数据仅保存在内存中；按 Ctrl+C 退出。");
 
     BilibiliClient bilibili(config.roomId, config.cookie, config.csrf);
     AIClient ai(config);
+    const QString pluginDirectory = QFileInfo(parser.value(configOption)).absoluteDir().filePath("plugins");
+    PluginManager plugins(pluginDirectory, config.pluginsEnabled, config.pluginSendDanmakuEnabled,
+                          [&bilibili](const QString &message) { bilibili.sendDanmaku(message); }, &app);
+    QObject::connect(&plugins, &PluginManager::log, &app, log);
+    plugins.load();
+    QObject::connect(&bilibili, &BilibiliClient::eventReceived, &plugins, &PluginManager::dispatch);
     QHash<qint64, QJsonArray> histories;
     QHash<qint64, qint64> userLastReply;
     QHash<QString, qint64> recentBotMessages;
