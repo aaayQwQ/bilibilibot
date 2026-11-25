@@ -1,8 +1,14 @@
-# bilibilibot 1.0.1 — 弹幕有回应，直播更有趣
+# bilibilibot 1.0.2 — 弹幕有回应，直播更有趣
 
 **Qt 6 · C++17 · 跨平台 · 安全优先**
 
 轻量级 Bilibili 直播间机器人，通过 Qt Network / WebSockets 连接弹幕服务，可接入 OpenAI 兼容或 Anthropic Messages API，并提供受限的 JSON 声明式插件接口。
+
+## 1.0.2 编译修复与验证更新
+
+- 修复 Windows、Linux、macOS 下 QDir 不完整类型导致的编译失败。
+- 修复 qBound 的 qint64 参数类型歧义，兼容 GCC、Clang 和 MSVC。
+- 正式发布前要求三平台 CI 构建、Qt Test 和 CodeQL 全部成功。
 
 ## 1.0.1 安全与稳定性更新
 
@@ -77,6 +83,11 @@ Windows MSVC 需要安装 Qt 6 对应的 MSVC Kit。GitHub Actions 会自动构�
 不同 Bilibili 机器人插件的宿主 ABI、脚本引擎、回调协议和权限模型并不统一。1.0.0 提供统一事件字段和安全动作接口，不能直接加载其他机器人专用 DLL、SO 或脚本。后续可按公开协议逐个编写适配器。
 
 ## 更新日志
+
+### v1.0.2 — 跨平台编译修复与发布验证
+
+- 修复 QDir 完整类型缺失和 qBound 整数类型歧义。
+- 发布前要求三平台构建、自动化测试和 CodeQL 均成功。
 
 ### v1.0.1 — 安全加固与可靠性修复 (2026-11-25)
 
