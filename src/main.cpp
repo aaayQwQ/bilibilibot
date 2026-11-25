@@ -137,9 +137,15 @@ int main(int argc, char *argv[]) {
 
     QObject::connect(&ai, &AIClient::finished, &app,
         [&](qint64 uid, const QString &name, const QString &input, const QString &answer) {
-            QString reply = answer;
-            reply.replace('\n', ' ');
-            reply.replace('\r', ' ');
+            QString reply;
+            reply.reserve(qMin(answer.size(), config.maxReplyChars));
+            for (const QChar ch : answer) {
+                const auto category = ch.category();
+                if (category == QChar::Other_Control || category == QChar::Other_Format ||
+                    category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
+                    continue;
+                reply.append(ch);
+            }
             reply = reply.simplified();
             if (reply.size() > config.maxReplyChars)
                 reply = reply.left(config.maxReplyChars).trimmed();
