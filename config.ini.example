@@ -31,3 +31,9 @@ room_cooldown_seconds=3
 reply_to_self=true
 ; 单个用户在内存中保留的对话轮数
 memory_turns=4
+
+[plugins]
+; 插件系统默认关闭。启用后只读取程序配置目录 plugins/ 下的 JSON 清单。
+enabled=false
+; 插件发送弹幕需要额外显式授权。
+allow_send_danmaku=false
