@@ -46,6 +46,9 @@ QMap<QString, QString> parseCookieFields(QString raw) {
 // Plain Cookie headers are accepted as a convenience, too.
 QString readCookieFile(const QString &configPath) {
     const QString cookiePath = QFileInfo(configPath).dir().filePath("cookie.txt");
+    const QFileInfo cookieInfo(cookiePath);
+    if (cookieInfo.isSymLink() || !cookieInfo.isFile() || cookieInfo.size() > 1024 * 1024)
+        return {};
     QFile file(cookiePath);
     if (!file.open(QIODevice::ReadOnly))
         return {};
