@@ -459,7 +459,8 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
     }
 }
 
-void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId) {
+void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId,
+                                 std::function<void(bool)> completion) {
     QString clean;
     clean.reserve(qMin<qsizetype>(text.size(), 180));
     for (qsizetype i = 0; i < text.size(); ++i) {
@@ -478,21 +479,24 @@ void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId) {
     clean = clean.simplified();
     if (stopped_ || clean.isEmpty() || clean.size() > 180 || csrf_.isEmpty() || realRoomId_ <= 0) {
         emit danmakuSendFinished(requestId, clean, false, "弹幕为空、超长或客户端尚未就绪。");
+        if (completion) completion(false);
         return;
     }
     if (sendQueue_.size() >= 30) {
         emit danmakuSendFinished(requestId, clean, false, "发送队列已满，已拒绝本次弹幕。");
+        if (completion) completion(false);
         return;
     }
-    sendQueue_.enqueue(qMakePair(requestId, clean));
+    sendQueue_.enqueue(QueuedDanmaku{requestId, clean, std::move(completion)});
     if (!sendBusy_ && !sendThrottle_.isActive()) dispatchNextDanmaku();
 }
 
 void BilibiliClient::dispatchNextDanmaku() {
     if (stopped_ || sendBusy_ || sendQueue_.isEmpty()) return;
-    const auto item = sendQueue_.dequeue();
-    const quint64 requestId = item.first;
-    const QString text = item.second;
+    const QueuedDanmaku item = sendQueue_.dequeue();
+    const quint64 requestId = item.requestId;
+    const QString text = item.text;
+    const auto completion = item.completion;
     QUrl url("https://api.live.bilibili.com/msg/send");
     QNetworkRequest request(url);
     request.setTransferTimeout(30000);
@@ -524,7 +528,7 @@ void BilibiliClient::dispatchNextDanmaku() {
             reply->abort();
         }
     });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, requestId, text, response, oversized]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, requestId, text, response, oversized, completion]() {
         if (!*oversized && reply->isOpen()) {
             const qsizetype remaining = MaxSendResponseBytes + 1 - response->size();
             if (remaining > 0) response->append(reply->read(remaining));
@@ -552,6 +556,7 @@ void BilibiliClient::dispatchNextDanmaku() {
             if (!success) reason = QString::fromUtf8(data.left(600));
         }
         emit danmakuSendFinished(requestId, text, success, reason);
+        if (completion) completion(success);
         if (success) emit log("弹幕发送成功。");
         else emit log("弹幕发送失败：" + reason);
         sendThrottle_.start();
