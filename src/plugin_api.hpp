@@ -4,11 +4,12 @@
 #include <QMap>
 #include <QString>
 #include <QElapsedTimer>
+#include <QSet>
 #include <functional>
 class PluginManager final : public QObject {
     Q_OBJECT
 public:
-    using SendDanmaku = std::function<void(const QString &)>;
+    using SendDanmaku = std::function<void(const QString &, std::function<void(bool)>)>;
     explicit PluginManager(QString directory, bool enabled, bool allowSendDanmaku,
                            SendDanmaku sender, QObject *parent = nullptr);
     void load();
@@ -28,4 +29,6 @@ private:
     QMap<QString, Rule> plugins_;
     QElapsedTimer monotonicClock_;
     qint64 lastGlobalSendMs_ = -1;
+    QSet<QString> pendingRules_;
+    bool pendingGlobalSend_ = false;
 };

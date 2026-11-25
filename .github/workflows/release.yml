@@ -1,21 +1,21 @@
-name: Publish v1.0.2 Release
+name: Publish v1.0.3 Release
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 concurrency:
-  group: publish-v1.0.2-${{ github.ref }}
+  group: publish-v1.0.3-${{ github.ref }}
   cancel-in-progress: false
 permissions:
   actions: read
   contents: write
 jobs:
   publish:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[release v1.0.2]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[release v1.0.3]') }}
     runs-on: ubuntu-24.04
     steps:
       - name: Check out the exact commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.sha }}
 
@@ -59,22 +59,22 @@ jobs:
           test "$(find release-zips -maxdepth 1 -name '*.zip' | wc -l)" -eq 3
           ls -lh release-zips
 
-      - name: Create v1.0.2 release and upload tested binaries
+      - name: Create v1.0.3 release and upload tested binaries
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ github.sha }}
         run: |
           release_ready=false
           for attempt in 1 2 3 4 5; do
-            if gh release view v1.0.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then release_ready=true; break; fi
-            gh release create v1.0.2 --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --title "bilibilibot v1.0.2" --notes-file CHANGELOG.md && { release_ready=true; break; }
+            if gh release view v1.0.3 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then release_ready=true; break; fi
+            gh release create v1.0.3 --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --title "bilibilibot v1.0.3" --notes-file CHANGELOG.md && { release_ready=true; break; }
             sleep $((attempt * 10))
           done
-          [ "$release_ready" = true ] || { echo "Could not create v1.0.2 release."; exit 1; }
+          [ "$release_ready" = true ] || { echo "Could not create v1.0.3 release."; exit 1; }
           uploaded=false
           for attempt in 1 2 3 4 5; do
-            if gh release upload v1.0.2 release-zips/*.zip --repo "$GITHUB_REPOSITORY" --clobber; then uploaded=true; break; fi
+            if gh release upload v1.0.3 release-zips/*.zip --repo "$GITHUB_REPOSITORY" --clobber; then uploaded=true; break; fi
             sleep $((attempt * 10))
           done
-          [ "$uploaded" = true ] || { echo "Could not upload v1.0.2 assets."; exit 1; }
+          [ "$uploaded" = true ] || { echo "Could not upload v1.0.3 assets."; exit 1; }
 

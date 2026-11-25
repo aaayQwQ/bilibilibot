@@ -15,6 +15,7 @@
 #include <QTextStream>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <QRegularExpression>
 
 struct ChatRequest {
     qint64 uid = 0;
@@ -29,7 +30,7 @@ struct PendingReply {
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName("bilibilibot");
-    QCoreApplication::setApplicationVersion("1.0.2");
+    QCoreApplication::setApplicationVersion("1.0.3");
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Bilibili live-room AI danmaku bot");
@@ -51,7 +52,7 @@ int main(int argc, char *argv[]) {
         out << "[" << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
             << "] " << message << Qt::endl;
     };
-    log("bilibilibot 1.0.2 启动。");
+    log("bilibilibot 1.0.3 启动。");
     log(QString("直播间：%1；关键词：%2").arg(config.roomId).arg(config.keywords.join(" | ")));
     log("运行数据仅保存在内存中；按 Ctrl+C 退出。");
 
@@ -59,7 +60,9 @@ int main(int argc, char *argv[]) {
     AIClient ai(config);
     const QString pluginDirectory = QFileInfo(parser.value(configOption)).absoluteDir().filePath("plugins");
     PluginManager plugins(pluginDirectory, config.pluginsEnabled, config.pluginSendDanmakuEnabled,
-                          [&bilibili](const QString &message) { bilibili.sendDanmaku(message); }, &app);
+                          [&bilibili](const QString &message, std::function<void(bool)> completion) {
+                              bilibili.sendDanmaku(message, 0, completion);
+                          }, &app);
     QObject::connect(&plugins, &PluginManager::log, &app, log);
     plugins.load();
     QObject::connect(&bilibili, &BilibiliClient::eventReceived, &plugins, &PluginManager::dispatch);
@@ -140,21 +143,43 @@ int main(int argc, char *argv[]) {
         [&](qint64 uid, const QString &name, const QString &input, const QString &answer) {
             QString reply;
             reply.reserve(qMin<qsizetype>(answer.size(), config.maxReplyChars));
-            for (const QChar ch : answer) {
+            for (qsizetype i = 0; i < answer.size(); ++i) {
+                const QChar ch = answer.at(i);
+                if (ch.isHighSurrogate() && i + 1 < answer.size() && answer.at(i + 1).isLowSurrogate()) {
+                    reply.append(ch);
+                    reply.append(answer.at(++i));
+                    continue;
+                }
                 const auto category = ch.category();
-                if (category == QChar::Other_Control || category == QChar::Other_Format ||
+                if (category == QChar::Other_Control || (category == QChar::Other_Format && ch.unicode() != 0x200D) ||
                     category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
                     continue;
                 reply.append(ch);
             }
             reply = reply.simplified();
-            if (reply.size() > config.maxReplyChars)
-                reply = reply.left(config.maxReplyChars).trimmed();
+            if (reply.size() > config.maxReplyChars) {
+                reply = reply.left(config.maxReplyChars);
+                if (!reply.isEmpty() && reply.back().isHighSurrogate())
+                    reply.chop(1);
+                reply = reply.trimmed();
+            }
             if (!reply.isEmpty()) {
                 const quint64 requestId = nextSendId++;
                 pendingReplies.insert(requestId,
                     PendingReply{ChatRequest{uid, name, input}, reply});
-                log(QString("准备发送回复：%1").arg(reply));
+                log(QString("AI 回复已生成：request=%1，字符数=%2；准备发送。")
+                    .arg(requestId).arg(reply.size()));
+                if (config.logAiContent) {
+                    QString diagnostic = reply;
+                    if (config.redactAiContent) {
+                        static const QRegularExpression secretPattern(
+                            QStringLiteral("(?i)(SESSDATA|bili_jct|authorization|api[_-]?key)\\s*[:=]\\s*[^\\s,;]+"));
+                        diagnostic.replace(secretPattern, QStringLiteral("$1=[REDACTED]"));
+                        static const QRegularExpression bearerPattern(QStringLiteral("(?i)Bearer\\s+[^\\s]+"));
+                        diagnostic.replace(bearerPattern, QStringLiteral("Bearer [REDACTED]"));
+                    }
+                    log(QString("AI 回复内容（显式启用）：%1").arg(diagnostic));
+                }
                 bilibili.sendDanmaku(reply, requestId);
             }
             busy = false;

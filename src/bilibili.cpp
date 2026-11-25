@@ -8,9 +8,11 @@
 #include <QNetworkRequest>
 #include <QUrlQuery>
 #include <QRegularExpression>
+#include <QSharedPointer>
 #include <QMap>
 #include <QByteArray>
 #include <QStringList>
+#include <cmath>
 #include <utility>
 
 namespace {
@@ -22,9 +24,18 @@ QJsonValue firstField(const QJsonObject &object, const QStringList &keys) {
     }
     return {};
 }
+qint64 safeInteger(const QJsonValue &value, qint64 fallback = 0) {
+    if (!value.isDouble()) return fallback;
+    const double number = value.toDouble();
+    constexpr double MinInclusive = -9223372036854775808.0;
+    constexpr double MaxExclusive = 9223372036854775808.0;
+    if (!std::isfinite(number) || number < MinInclusive || number >= MaxExclusive)
+        return fallback;
+    return static_cast<qint64>(number);
+}
 qint64 numericField(const QJsonObject &object, const QStringList &keys, qint64 fallback = 0) {
     const QJsonValue value = firstField(object, keys);
-    if (value.isDouble()) return qint64(value.toDouble());
+    if (value.isDouble()) return safeInteger(value, fallback);
     if (value.isString()) {
         bool ok = false;
         const qint64 parsed = value.toString().trimmed().toLongLong(&ok);
@@ -125,7 +136,7 @@ void BilibiliClient::beginLogin() {
             reconnect_.start();
             return;
         }
-        ownUid_ = data.value("mid").toVariant().toLongLong();
+        ownUid_ = safeInteger(data.value("mid"), 0);
         emit identityReady(ownUid_);
         const QJsonObject wbi = data.value("wbi_img").toObject();
         auto keyFromUrl = [](const QString &url) {
@@ -159,7 +170,7 @@ void BilibiliClient::loadRoomInfo() {
             reconnect_.start();
             return;
         }
-        realRoomId_ = data.value("room_id").toVariant().toLongLong();
+        realRoomId_ = safeInteger(data.value("room_id"), 0);
         if (realRoomId_ <= 0) realRoomId_ = requestedRoomId_;
         loadDanmuInfo();
     });
@@ -405,7 +416,7 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
         const QString text = info.at(1).toString().trimmed();
         const QJsonArray user = info.at(2).toArray();
         if (text.isEmpty() || user.size() < 2) return;
-        const qint64 uid = user.at(0).toVariant().toLongLong();
+        const qint64 uid = safeInteger(user.at(0), 0);
         const QString name = user.at(1).toString();
         emit danmaku(uid, name, text);
         emit eventReceived(QJsonObject{{"type","danmaku"},{"uid",uid},{"user",name},
@@ -448,12 +459,19 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
     }
 }
 
-void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId) {
+void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId,
+                                 std::function<void(bool)> completion) {
     QString clean;
     clean.reserve(qMin<qsizetype>(text.size(), 180));
-    for (const QChar ch : text) {
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        const QChar ch = text.at(i);
+        if (ch.isHighSurrogate() && i + 1 < text.size() && text.at(i + 1).isLowSurrogate()) {
+            clean.append(ch);
+            clean.append(text.at(++i));
+            continue;
+        }
         const auto category = ch.category();
-        if (category == QChar::Other_Control || category == QChar::Other_Format ||
+        if (category == QChar::Other_Control || (category == QChar::Other_Format && ch.unicode() != 0x200D) ||
             category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
             continue;
         clean.append(ch);
@@ -461,21 +479,24 @@ void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId) {
     clean = clean.simplified();
     if (stopped_ || clean.isEmpty() || clean.size() > 180 || csrf_.isEmpty() || realRoomId_ <= 0) {
         emit danmakuSendFinished(requestId, clean, false, "弹幕为空、超长或客户端尚未就绪。");
+        if (completion) completion(false);
         return;
     }
     if (sendQueue_.size() >= 30) {
         emit danmakuSendFinished(requestId, clean, false, "发送队列已满，已拒绝本次弹幕。");
+        if (completion) completion(false);
         return;
     }
-    sendQueue_.enqueue(qMakePair(requestId, clean));
+    sendQueue_.enqueue(QueuedDanmaku{requestId, clean, std::move(completion)});
     if (!sendBusy_ && !sendThrottle_.isActive()) dispatchNextDanmaku();
 }
 
 void BilibiliClient::dispatchNextDanmaku() {
     if (stopped_ || sendBusy_ || sendQueue_.isEmpty()) return;
-    const auto item = sendQueue_.dequeue();
-    const quint64 requestId = item.first;
-    const QString text = item.second;
+    const QueuedDanmaku item = sendQueue_.dequeue();
+    const quint64 requestId = item.requestId;
+    const QString text = item.text;
+    const auto completion = item.completion;
     QUrl url("https://api.live.bilibili.com/msg/send");
     QNetworkRequest request(url);
     request.setTransferTimeout(30000);
@@ -494,18 +515,38 @@ void BilibiliClient::dispatchNextDanmaku() {
     form.addQueryItem("csrf", csrf_);
     form.addQueryItem("csrf_token", csrf_);
     sendBusy_ = true;
+    constexpr qsizetype MaxSendResponseBytes = 64 * 1024;
     QNetworkReply *reply = network_.post(request, form.query(QUrl::FullyEncoded).toUtf8());
-    connect(reply, &QNetworkReply::finished, this, [this, reply, requestId, text]() {
+    reply->setReadBufferSize(MaxSendResponseBytes + 1);
+    auto response = QSharedPointer<QByteArray>::create();
+    auto oversized = QSharedPointer<bool>::create(false);
+    connect(reply, &QIODevice::readyRead, this, [reply, response, oversized]() {
+        const qsizetype remaining = MaxSendResponseBytes + 1 - response->size();
+        if (remaining > 0) response->append(reply->read(remaining));
+        if (response->size() > MaxSendResponseBytes) {
+            *oversized = true;
+            reply->abort();
+        }
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply, requestId, text, response, oversized, completion]() {
+        if (!*oversized && reply->isOpen()) {
+            const qsizetype remaining = MaxSendResponseBytes + 1 - response->size();
+            if (remaining > 0) response->append(reply->read(remaining));
+            if (response->size() > MaxSendResponseBytes) *oversized = true;
+        }
         const auto error = reply->error();
         const QString errorString = reply->errorString();
-        const QByteArray data = reply->isOpen() ? reply->readAll() : QByteArray();
+        const QByteArray data = *response;
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         reply->deleteLater();
         sendBusy_ = false;
         if (stopped_) return;
         bool success = error == QNetworkReply::NoError && status >= 200 && status < 300;
         QString reason;
-        if (!success) {
+        if (*oversized) {
+            success = false;
+            reason = "Bilibili 弹幕发送响应超过 64 KiB 上限，已取消请求。";
+        } else if (!success) {
             reason = error != QNetworkReply::NoError ? errorString : QString("HTTP %1").arg(status);
         } else {
             QJsonParseError parseError{};
@@ -515,6 +556,7 @@ void BilibiliClient::dispatchNextDanmaku() {
             if (!success) reason = QString::fromUtf8(data.left(600));
         }
         emit danmakuSendFinished(requestId, text, success, reason);
+        if (completion) completion(success);
         if (success) emit log("弹幕发送成功。");
         else emit log("弹幕发送失败：" + reason);
         sendThrottle_.start();

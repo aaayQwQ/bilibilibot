@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QRegularExpression>
+#include <cmath>
 #include <QStringList>
 #include <utility>
 
@@ -22,9 +23,16 @@ bool validId(const QString &id) {
 QString safeField(QString value) {
     QString clean;
     clean.reserve(qMin<qsizetype>(value.size(), MaxVariableLength));
-    for (const QChar ch : value) {
+    for (qsizetype i = 0; i < value.size(); ++i) {
+        const QChar ch = value.at(i);
+        if (ch.isHighSurrogate() && i + 1 < value.size() && value.at(i + 1).isLowSurrogate()) {
+            if (clean.size() + 2 > MaxVariableLength) break;
+            clean.append(ch);
+            clean.append(value.at(++i));
+            continue;
+        }
         const auto category = ch.category();
-        if (category == QChar::Other_Control || category == QChar::Other_Format ||
+        if (category == QChar::Other_Control || (category == QChar::Other_Format && ch.unicode() != 0x200D) ||
             category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
             continue;
         if (clean.size() >= MaxVariableLength) break;
@@ -36,7 +44,13 @@ QString safeField(QString value) {
 qint64 integerField(const QJsonObject &object, const QStringList &keys, qint64 fallback = 0) {
     for (const QString &key : keys) {
         const QJsonValue value = object.value(key);
-        if (value.isDouble()) return qint64(value.toDouble());
+        if (value.isDouble()) {
+            const double number = value.toDouble();
+            constexpr double MinInclusive = -9223372036854775808.0;
+            constexpr double MaxExclusive = 9223372036854775808.0;
+            if (std::isfinite(number) && number >= MinInclusive && number < MaxExclusive)
+                return static_cast<qint64>(number);
+        }
         if (value.isString()) {
             bool ok = false;
             const qint64 parsed = value.toString().trimmed().toLongLong(&ok);
@@ -123,11 +137,11 @@ void PluginManager::dispatch(const QJsonObject &event) {
     if (!enabled_ || !allowSendDanmaku_ || !sender_) return;
     const QString eventType = event.value("type").toString();
     const qint64 now = monotonicClock_.elapsed();
-    if (lastGlobalSendMs_ >= 0 && now - lastGlobalSendMs_ < 3000) return;
+    if (pendingGlobalSend_ || (lastGlobalSendMs_ >= 0 && now - lastGlobalSendMs_ < 3000)) return;
 
     for (auto it = plugins_.begin(); it != plugins_.end(); ++it) {
         Rule &rule = it.value();
-        if (rule.event != eventType ||
+        if (pendingRules_.contains(rule.id) || rule.event != eventType ||
             (rule.lastTriggeredMs >= 0 && now - rule.lastTriggeredMs < qint64(rule.cooldownSeconds) * 1000))
             continue;
         const qint64 count = integerField(event, {"count", "num"}, 0);
@@ -145,10 +159,23 @@ void PluginManager::dispatch(const QJsonObject &event) {
         text = safeField(text);
         if (text.isEmpty() || text.size() > MaxMessageLength) continue;
 
-        sender_(text);
-        rule.lastTriggeredMs = now;
-        lastGlobalSendMs_ = now;
-        emit log(QStringLiteral("插件 %1 已提交弹幕发送请求。").arg(rule.id));
+        const QString ruleId = rule.id;
+        pendingRules_.insert(ruleId);
+        pendingGlobalSend_ = true;
+        sender_(text, [this, ruleId](bool success) {
+            pendingRules_.remove(ruleId);
+            pendingGlobalSend_ = false;
+            if (!success) {
+                emit log(QStringLiteral("插件 %1 的弹幕发送失败；冷却时间不启动。").arg(ruleId));
+                return;
+            }
+            auto completedRule = plugins_.find(ruleId);
+            if (completedRule != plugins_.end())
+                completedRule->lastTriggeredMs = monotonicClock_.elapsed();
+            lastGlobalSendMs_ = monotonicClock_.elapsed();
+            emit log(QStringLiteral("插件 %1 的弹幕已被 Bilibili 接受，冷却时间开始。").arg(ruleId));
+        });
+        emit log(QStringLiteral("插件 %1 已提交弹幕发送请求。").arg(ruleId));
         break;
     }
 }

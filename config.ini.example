@@ -39,3 +39,9 @@ memory_turns=4
 enabled=false
 ; 插件发送弹幕需要额外显式授权。
 allow_send_danmaku=false
+
+[logging]
+; 默认不记录 AI 回复全文，只记录请求标识、字符数和发送状态。
+log_ai_content=false
+; 仅在 log_ai_content=true 时生效；尽可能脱敏常见凭据字段。
+redact_ai_content=true
