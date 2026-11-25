@@ -4,6 +4,12 @@
 
 ## [1.0.0] - 2026-11-25
 
+### AI network request hotfix
+- Avoid reading a closed `QNetworkReply` when a request is canceled, eliminating the `QIODevice::read: device not open` warning.
+- Track outstanding AI requests and cancel them explicitly during application shutdown.
+- Distinguish `OperationCanceledError` from HTTP/API errors and include request host, elapsed time, and reply-device state in diagnostics.
+- Increase the transfer inactivity timeout to 120 seconds for reasoning models.
+
 ### Fixed
 - Adapt WebSocket binary-message delivery through a lambda compatible with Qt's signal/slot arity rules.
 - Negotiate Bilibili zlib payloads (`protover=2`) and enforce an 8 MiB decompressed-data ceiling using Qt APIs.
