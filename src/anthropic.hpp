@@ -15,8 +15,8 @@ public:
     void stop();
 
 signals:
-    void finished(qint64 uid, const QString &userName, const QString &reply);
-    void failed(qint64 uid, const QString &userName, const QString &reason);
+    void finished(qint64 uid, const QString &userName, const QString &input, const QString &reply);
+    void failed(qint64 uid, const QString &userName, const QString &input, const QString &reason);
 
 private:
     Config config_;
