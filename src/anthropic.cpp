@@ -32,8 +32,9 @@ void AIClient::generate(const QString &userName, const QString &message, const Q
     }
 
     const QUrl url(endpoint);
-    if (!url.isValid() || (url.scheme() != "https") || url.host().isEmpty()) {
-        emit failed("AI Base URL 无效：必须是有效的 http:// 或 https:// 地址。");
+    if (!url.isValid() || url.scheme() != "https" || url.host().isEmpty() ||
+        !url.userInfo().isEmpty() || !url.query().isEmpty() || !url.fragment().isEmpty()) {
+        emit failed("AI Base URL 无效：必须是无用户信息、无查询参数的 HTTPS 地址。");
         return;
     }
 

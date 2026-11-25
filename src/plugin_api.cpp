@@ -67,6 +67,7 @@ void PluginManager::dispatch(const QJsonObject &event) {
     if (!enabled_ || !allowSendDanmaku_ || !sender_) return;
     const QString eventType = event.value("type").toString();
     const qint64 now = QDateTime::currentSecsSinceEpoch();
+    if (now - lastGlobalSend_ < 3) return;
     for (auto it = plugins_.begin(); it != plugins_.end(); ++it) {
         Rule &rule = it.value();
         if (rule.event != eventType || now - rule.lastTriggered < rule.cooldownSeconds) continue;
@@ -83,7 +84,9 @@ void PluginManager::dispatch(const QJsonObject &event) {
         text = text.simplified();
         if (text.isEmpty() || text.size() > MaxMessageLength) continue;
         rule.lastTriggered = now;
+        lastGlobalSend_ = now;
         sender_(text);
+        break;
         emit log(QStringLiteral("插件 %1 已请求发送弹幕。").arg(rule.id));
     }
 }

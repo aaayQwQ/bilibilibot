@@ -9,7 +9,6 @@
 #include <QUrlQuery>
 #include <QRegularExpression>
 #include <QMap>
-#include <QDebug>
 #include <utility>
 
 namespace {
@@ -180,7 +179,15 @@ void BilibiliClient::loadDanmuInfo() {
 
 void BilibiliClient::connectSocket(const QString &host, int port, const QString &) {
     if (stopped_) return;
-    const QUrl url(QString("wss://%1:%2/sub").arg(host).arg(port));
+    const QString normalizedHost = host.trimmed().toLower();
+    if ((!normalizedHost.endsWith(".bilibili.com") && normalizedHost != "bilibili.com") ||
+        port <= 0 || port > 65535) {
+        connecting_ = false;
+        emit log("拒绝连接非 Bilibili 域名或无效端口。");
+        reconnect_.start();
+        return;
+    }
+    const QUrl url(QString("wss://%1:%2/sub").arg(normalizedHost).arg(port));
     emit log("正在连接弹幕服务器：" + host);
     socket_.open(url);
 }
@@ -248,7 +255,8 @@ void BilibiliClient::parsePackets(const QByteArray &data) {
     while (offset + kHeaderSize <= data.size()) {
         const quint32 packetLength = readU32(data.constData() + offset);
         const quint16 headerLength = readU16(data.constData() + offset + 4);
-        if (packetLength < kHeaderSize || headerLength < kHeaderSize ||
+        if (packetLength < kHeaderSize || headerLength != kHeaderSize ||
+            packetLength > 8U * 1024U * 1024U ||
             packetLength > quint32(data.size() - offset)) break;
         const QByteArray packet = data.mid(offset, int(packetLength));
         parseOnePacket(packet);
@@ -355,8 +363,10 @@ void BilibiliClient::sendDanmaku(const QString &text) {
     if (text.trimmed().isEmpty() || csrf_.isEmpty()) return;
     QUrl url("https://api.live.bilibili.com/msg/send");
     QNetworkRequest request(url);
+    request.setTransferTimeout(30000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setRawHeader("Cookie", cookie_.toUtf8());
-    request.setRawHeader("User-Agent", "Mozilla/5.0 BilibiliBot/0.1");
+    request.setRawHeader("User-Agent", "Mozilla/5.0 BilibiliBot/1.0");
     request.setRawHeader("Referer", QString("https://live.bilibili.com/%1").arg(realRoomId_).toUtf8());
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
     QUrlQuery form;

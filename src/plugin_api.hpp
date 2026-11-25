@@ -25,4 +25,5 @@ private:
     bool enabled_ = false, allowSendDanmaku_ = false;
     SendDanmaku sender_;
     QHash<QString, Rule> plugins_;
+    qint64 lastGlobalSend_ = 0;
 };
