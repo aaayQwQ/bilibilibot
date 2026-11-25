@@ -53,6 +53,30 @@ private slots:
         QVERIFY(!sent.first().contains('\n'));
         QVERIFY(!sent.first().contains(QChar(0x202e)));
     }
+    void supplementaryUnicodeIsPreserved() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        QVERIFY(writeManifest(dir.path(), "unicode.json",
+            R"({"schema_version":1,"id":"unicode","enabled":true,"event":"gift","cooldown_seconds":0,"action":{"type":"send_danmaku","template":"Hi {user}"}})"));
+        QStringList sent;
+        PluginManager manager(dir.path(), true, true, [&sent](const QString &s){ sent.push_back(s); });
+        manager.load();
+        const QString name = QString::fromUtf8("A😀𠀋");
+        manager.dispatch(QJsonObject{{"type","gift"},{"count",1},{"user",name}});
+        QCOMPARE(sent.size(), 1);
+        QCOMPARE(sent.first(), QString("Hi ") + name);
+    }
+    void outOfRangeJsonNumbersAreRejected() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        QVERIFY(writeManifest(dir.path(), "range.json",
+            R"({"schema_version":1,"id":"range","enabled":true,"event":"gift","min_gift_count":1,"cooldown_seconds":0,"action":{"type":"send_danmaku","template":"count={count}"}})"));
+        QStringList sent;
+        PluginManager manager(dir.path(), true, true, [&sent](const QString &s){ sent.push_back(s); });
+        manager.load();
+        manager.dispatch(QJsonObject{{"type","gift"},{"count",1.0e300}});
+        manager.dispatch(QJsonObject{{"type","gift"},{"count",-1.0e300}});
+        manager.dispatch(QJsonObject{{"type","gift"},{"count",9223372036854775808.0}});
+        QVERIFY(sent.isEmpty());
+    }
     void oversizedTemplateIsRejected() {
         QTemporaryDir dir; QVERIFY(dir.isValid());
         const QString templateText(201, QLatin1Char('x'));
