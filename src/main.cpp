@@ -136,7 +136,7 @@ int main(int argc, char *argv[]) {
         });
 
     QObject::connect(&ai, &AIClient::finished, &app,
-        [&](qint64 uid, const QString &name, const QString &answer) {
+        [&](qint64 uid, const QString &name, const QString &input, const QString &answer) {
             QString reply = answer;
             reply.replace('\n', ' ');
             reply.replace('\r', ' ');
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
             if (!reply.isEmpty()) {
                 const quint64 requestId = nextSendId++;
                 pendingReplies.insert(requestId,
-                    PendingReply{ChatRequest{uid, name, {}}, reply});
+                    PendingReply{ChatRequest{uid, name, input}, reply});
                 log(QString("准备发送回复：%1").arg(reply));
                 bilibili.sendDanmaku(reply, requestId);
             }
@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
         });
 
     QObject::connect(&ai, &AIClient::failed, &app,
-        [&](qint64, const QString &name, const QString &reason) {
+        [&](qint64, const QString &name, const QString &, const QString &reason) {
             log(QString("AI 请求失败（%1）：%2").arg(name, reason));
             busy = false;
             QTimer::singleShot(0, &app, processNext);
