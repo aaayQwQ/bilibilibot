@@ -26,8 +26,8 @@ jobs:
           TARGET_SHA: ${{ github.sha }}
         run: |
           for attempt in $(seq 1 60); do
-            build=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=100" --jq '[.workflow_runs[] | select(.name == "Build and Test" and .head_sha == $sha)] | sort_by(.created_at) | last' --arg sha "$TARGET_SHA")
-            codeql=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=100" --jq '[.workflow_runs[] | select(.name == "CodeQL" and .head_sha == $sha)] | sort_by(.created_at) | last' --arg sha "$TARGET_SHA")
+            build=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=100" --jq '[.workflow_runs[] | select(.name == "Build and Test")] | sort_by(.created_at) | last')
+            codeql=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=100" --jq '[.workflow_runs[] | select(.name == "CodeQL")] | sort_by(.created_at) | last')
             build_status=$(echo "$build" | jq -r '.status // empty')
             build_result=$(echo "$build" | jq -r '.conclusion // empty')
             codeql_status=$(echo "$codeql" | jq -r '.status // empty')
