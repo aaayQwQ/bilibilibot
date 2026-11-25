@@ -64,12 +64,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ github.sha }}
         run: |
-          if ! gh release view v1.0.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create v1.0.2 --repo "$GITHUB_REPOSITORY" \
-              --target "$TARGET_SHA" \
-              --title "bilibilibot v1.0.2" \
-              --notes-file CHANGELOG.md
-          fi
-          gh release upload v1.0.2 release-zips/*.zip \
-            --repo "$GITHUB_REPOSITORY" --clobber
+          release_ready=false
+          for attempt in 1 2 3 4 5; do
+            if gh release view v1.0.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then release_ready=true; break; fi
+            gh release create v1.0.2 --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --title "bilibilibot v1.0.2" --notes-file CHANGELOG.md && { release_ready=true; break; }
+            sleep $((attempt * 10))
+          done
+          [ "$release_ready" = true ] || { echo "Could not create v1.0.2 release."; exit 1; }
+          uploaded=false
+          for attempt in 1 2 3 4 5; do
+            if gh release upload v1.0.2 release-zips/*.zip --repo "$GITHUB_REPOSITORY" --clobber; then uploaded=true; break; fi
+            sleep $((attempt * 10))
+          done
+          [ "$uploaded" = true ] || { echo "Could not upload v1.0.2 assets."; exit 1; }
 
