@@ -1,4 +1,4 @@
-#include "config.h"
+#include "config.hpp"
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
