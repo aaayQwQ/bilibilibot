@@ -67,16 +67,22 @@ void BilibiliClient::start() {
 }
 
 void BilibiliClient::stop() {
+    if (stopped_) return;
     stopped_ = true;
+    connecting_ = false;
     heartbeat_.stop();
     reconnect_.stop();
-    // Shutdown must not leave asynchronous socket/network work alive while
-    // stack-owned Qt objects are being destroyed after QCoreApplication exits.
-    socket_.abort();
+
+    // Detach callbacks before aborting replies: abort() emits finished(), and
+    // shutdown must not schedule reconnects or invoke application callbacks.
     const auto replies = network_.findChildren<QNetworkReply *>();
     for (QNetworkReply *reply : replies) {
-        if (reply && reply->isRunning()) reply->abort();
+        if (!reply) continue;
+        QObject::disconnect(reply, nullptr, this, nullptr);
+        if (reply->isRunning()) reply->abort();
+        reply->deleteLater();
     }
+    socket_.abort();
 }
 
 void BilibiliClient::beginLogin() {
@@ -213,11 +219,14 @@ void BilibiliClient::requestJson(const QUrl &url, JsonCallback callback) {
     connect(reply, &QNetworkReply::finished, this, [this, reply, callback]() {
         const QByteArray data = reply->readAll();
         const auto error = reply->error();
+        const QString errorString = reply->errorString();
         reply->deleteLater();
+
+        if (stopped_) return;
         if (error != QNetworkReply::NoError) {
             connecting_ = false;
-            emit log("Bilibili API 网络错误：" + reply->errorString());
-            if (!stopped_) reconnect_.start();
+            emit log("Bilibili API 网络错误：" + errorString);
+            reconnect_.start();
             return;
         }
         QJsonParseError parseError{};
@@ -413,7 +422,7 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
 }
 
 void BilibiliClient::sendDanmaku(const QString &text) {
-    if (text.trimmed().isEmpty() || csrf_.isEmpty()) return;
+    if (stopped_ || text.trimmed().isEmpty() || csrf_.isEmpty() || realRoomId_ <= 0) return;
     QUrl url("https://api.live.bilibili.com/msg/send");
     QNetworkRequest request(url);
     request.setTransferTimeout(30000);
@@ -436,9 +445,12 @@ void BilibiliClient::sendDanmaku(const QString &text) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         const QByteArray data = reply->readAll();
         const auto error = reply->error();
+        const QString errorString = reply->errorString();
         reply->deleteLater();
+
+        if (stopped_) return;
         if (error != QNetworkReply::NoError) {
-            emit log("发送弹幕网络错误：" + reply->errorString());
+            emit log("发送弹幕网络错误：" + errorString);
             return;
         }
         QJsonParseError e{};
