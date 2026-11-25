@@ -450,7 +450,7 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
 
 void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId) {
     QString clean;
-    clean.reserve(qMin(text.size(), 180));
+    clean.reserve(qMin<qsizetype>(text.size(), 180));
     for (const QChar ch : text) {
         const auto category = ch.category();
         if (category == QChar::Other_Control || category == QChar::Other_Format ||
