@@ -96,7 +96,8 @@ private slots:
             R"({"schema_version":1,"id":"real","enabled":true,"event":"gift","action":{"type":"send_danmaku","template":"ok"}})"));
         const QString target = QDir(dir.path()).filePath("real.json");
         const QString link = QDir(dir.path()).filePath("linked.json");
-        if (!QFile::link(target, link) || !QFileInfo(link).isSymLink())
+        QFile targetFile(target);
+        if (!targetFile.link(link) || !QFileInfo(link).isSymLink())
             QSKIP("Symbolic links are unavailable in this test environment.");
         PluginManager manager(dir.path(), true, true, [](const QString &) {});
         manager.load(); QCOMPARE(manager.pluginCount(), 1);
