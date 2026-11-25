@@ -1,4 +1,4 @@
-#include "bilibili.h"
+#include "bilibili.hpp"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QJsonArray>
