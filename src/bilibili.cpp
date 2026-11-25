@@ -462,13 +462,18 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
 void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId) {
     QString clean;
     clean.reserve(qMin<qsizetype>(text.size(), 180));
-    const QVector<uint> codePoints = text.toUcs4();
-    for (uint codePoint : codePoints) {
-        const auto category = QChar::category(codePoint);
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        const QChar ch = text.at(i);
+        if (ch.isHighSurrogate() && i + 1 < text.size() && text.at(i + 1).isLowSurrogate()) {
+            clean.append(ch);
+            clean.append(text.at(++i));
+            continue;
+        }
+        const auto category = ch.category();
         if (category == QChar::Other_Control || category == QChar::Other_Format ||
             category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
             continue;
-        clean.append(QString::fromUcs4(&codePoint, 1));
+        clean.append(ch);
     }
     clean = clean.simplified();
     if (stopped_ || clean.isEmpty() || clean.size() > 180 || csrf_.isEmpty() || realRoomId_ <= 0) {
