@@ -184,9 +184,12 @@ bool Config::load(const QString &path, QString *error) {
     const bool localHost = aiHost == "localhost" || aiHost.endsWith(".localhost") ||
         aiHost.endsWith(".local") || aiHost.endsWith(".internal") ||
         aiHost == "metadata.google.internal";
+    static const QRegularExpression publicDnsName(
+        QStringLiteral("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\\.[a-z]{2,63}$"));
     if (!aiUrl.isValid() || aiUrl.scheme() != "https" || aiHost.isEmpty() ||
         !aiUrl.userInfo().isEmpty() || !aiUrl.query().isEmpty() || !aiUrl.fragment().isEmpty() ||
-        literalAddress.setAddress(aiHost) || localHost) {
+        (aiUrl.port(-1) != -1 && aiUrl.port(-1) != 443) ||
+        !publicDnsName.match(aiHost).hasMatch() || literalAddress.setAddress(aiHost) || localHost) {
         if (error) *error = "ai.base_url 必须是 HTTPS 公网域名，禁止 IP 字面量、本地域名、用户信息、查询参数和片段。";
         return false;
     }
