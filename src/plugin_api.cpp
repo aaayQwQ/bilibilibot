@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QRegularExpression>
+#include <cmath>
 #include <QStringList>
 #include <utility>
 
@@ -22,13 +23,15 @@ bool validId(const QString &id) {
 QString safeField(QString value) {
     QString clean;
     clean.reserve(qMin<qsizetype>(value.size(), MaxVariableLength));
-    for (const QChar ch : value) {
-        const auto category = ch.category();
+    const QVector<uint> codePoints = value.toUcs4();
+    for (uint codePoint : codePoints) {
+        const auto category = QChar::category(codePoint);
         if (category == QChar::Other_Control || category == QChar::Other_Format ||
             category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
             continue;
-        if (clean.size() >= MaxVariableLength) break;
-        clean.append(ch);
+        const QString character = QString::fromUcs4(&codePoint, 1);
+        if (clean.size() + character.size() > MaxVariableLength) break;
+        clean.append(character);
     }
     return clean.simplified();
 }
@@ -36,7 +39,13 @@ QString safeField(QString value) {
 qint64 integerField(const QJsonObject &object, const QStringList &keys, qint64 fallback = 0) {
     for (const QString &key : keys) {
         const QJsonValue value = object.value(key);
-        if (value.isDouble()) return qint64(value.toDouble());
+        if (value.isDouble()) {
+            const double number = value.toDouble();
+            constexpr double MinInclusive = -9223372036854775808.0;
+            constexpr double MaxExclusive = 9223372036854775808.0;
+            if (std::isfinite(number) && number >= MinInclusive && number < MaxExclusive)
+                return static_cast<qint64>(number);
+        }
         if (value.isString()) {
             bool ok = false;
             const qint64 parsed = value.toString().trimmed().toLongLong(&ok);
