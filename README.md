@@ -54,7 +54,7 @@
 ## 配置和运行
 
 1. 复制 config.ini.example 为 config.ini。
-2. 填写直播间号及 AI 服务配置。
+2. 填写直播间号及 AI 服务配置；`[ai] allowed_hosts` 必须填写与 `base_url` 完全相同的主机名（例如 `api.example.com`），旧版 config.ini 需要补上这一项。
 3. 将 Netscape 格式的 Bilibili Cookie 文件放在配置文件同目录，命名为 cookie.txt。
 4. 运行 bilibilibot。
 
