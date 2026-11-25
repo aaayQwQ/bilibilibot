@@ -70,7 +70,13 @@ QString readCookieFile(const QString &configPath) {
     if (!file.open(QIODevice::ReadOnly))
         return {};
 
-    const QString raw = QString::fromUtf8(file.readAll()).trimmed();
+    const QByteArray rawBytes = file.readAll();
+    const QString decoded = QString::fromUtf8(rawBytes.constData(), rawBytes.size());
+    if (decoded.toUtf8() != rawBytes) {
+        qWarning().noquote() << QStringLiteral("[SECURITY] Cookie 文件不是有效 UTF-8，拒绝读取：%1").arg(cookieInfo.absoluteFilePath());
+        return {};
+    }
+    const QString raw = decoded.trimmed();
     if (raw.isEmpty())
         return {};
 
