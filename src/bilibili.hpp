@@ -22,6 +22,7 @@ signals:
     void log(const QString &message);
     void identityReady(qint64 uid);
     void danmaku(qint64 uid, const QString &name, const QString &text);
+    void eventReceived(const QJsonObject &event);
     void connected();
     void disconnected();
 

@@ -1,0 +1,65 @@
+name: Publish v1.0.0
+on:
+  workflow_run:
+    workflows: ["Build and Test"]
+    types: [completed]
+    branches: ["main"]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          contains(github.event.workflow_run.head_commit.message, '[release v1.0.0]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the exact tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Verify CodeQL completed successfully for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          for attempt in $(seq 1 40); do
+            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=30" --jq '[.workflow_runs[] | select(.name == "CodeQL") | {status: .status, conclusion: .conclusion}] | first')
+            status=$(echo "$result" | jq -r '.status // empty')
+            conclusion=$(echo "$result" | jq -r '.conclusion // empty')
+            if [ "$status" = "completed" ]; then
+              [ "$conclusion" = "success" ] || { echo "CodeQL did not pass: $conclusion"; exit 1; }
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "Timed out waiting for CodeQL."
+          exit 1
+
+      - name: Download tested platform artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --dir release-assets
+
+      - name: Create platform archives
+        run: |
+          mkdir -p release-zips
+          for dir in release-assets/*/; do
+            name=$(basename "$dir")
+            (cd "$dir" && zip -qr "../../release-zips/$name.zip" .)
+          done
+          ls -lh release-zips
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
+          name: bilibilibot v1.0.0 — 弹幕生态，正式开场
+          body_path: CHANGELOG.md
+          files: release-zips/*.zip
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false

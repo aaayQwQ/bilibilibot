@@ -9,7 +9,6 @@
 #include <QUrlQuery>
 #include <QRegularExpression>
 #include <QMap>
-#include <zlib.h>
 #include <utility>
 
 namespace {
@@ -18,6 +17,8 @@ const int kHeaderSize = 16;
 
 BilibiliClient::BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObject *parent)
     : QObject(parent), requestedRoomId_(roomId), cookie_(std::move(cookie)), csrf_(std::move(csrf)) {
+    socket_.setMaxAllowedIncomingFrameSize(4 * 1024 * 1024);
+    socket_.setMaxAllowedIncomingMessageSize(8 * 1024 * 1024);
     heartbeat_.setInterval(30000);
     reconnect_.setInterval(5000);
     reconnect_.setSingleShot(true);
@@ -31,7 +32,7 @@ BilibiliClient::BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObj
         QJsonObject auth{
             {"uid", ownUid_},
             {"roomid", realRoomId_},
-            {"protover", 2},
+            {"protover", 0},
             {"platform", "web"},
             {"type", 2},
             {"key", danmuToken_}
@@ -178,17 +179,28 @@ void BilibiliClient::loadDanmuInfo() {
 
 void BilibiliClient::connectSocket(const QString &host, int port, const QString &) {
     if (stopped_) return;
-    const QUrl url(QString("wss://%1:%2/sub").arg(host).arg(port));
+    const QString normalizedHost = host.trimmed().toLower();
+    if ((!normalizedHost.endsWith(".bilibili.com") && normalizedHost != "bilibili.com") ||
+        port <= 0 || port > 65535) {
+        connecting_ = false;
+        emit log("拒绝连接非 Bilibili 域名或无效端口。");
+        reconnect_.start();
+        return;
+    }
+    const QUrl url(QString("wss://%1:%2/sub").arg(normalizedHost).arg(port));
     emit log("正在连接弹幕服务器：" + host);
     socket_.open(url);
 }
 
 void BilibiliClient::requestJson(const QUrl &url, JsonCallback callback) {
     QNetworkRequest request(url);
+    request.setTransferTimeout(30000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setRawHeader("Cookie", cookie_.toUtf8());
     request.setRawHeader("User-Agent", "Mozilla/5.0 BilibiliBot/0.1");
     request.setRawHeader("Referer", "https://live.bilibili.com/");
     QNetworkReply *reply = network_.get(request);
+    reply->setReadBufferSize(1024 * 1024);
     connect(reply, &QNetworkReply::finished, this, [this, reply, callback]() {
         const QByteArray data = reply->readAll();
         const auto error = reply->error();
@@ -243,7 +255,8 @@ void BilibiliClient::parsePackets(const QByteArray &data) {
     while (offset + kHeaderSize <= data.size()) {
         const quint32 packetLength = readU32(data.constData() + offset);
         const quint16 headerLength = readU16(data.constData() + offset + 4);
-        if (packetLength < kHeaderSize || headerLength < kHeaderSize ||
+        if (packetLength < kHeaderSize || headerLength != kHeaderSize ||
+            packetLength > 8U * 1024U * 1024U ||
             packetLength > quint32(data.size() - offset)) break;
         const QByteArray packet = data.mid(offset, int(packetLength));
         parseOnePacket(packet);
@@ -270,24 +283,11 @@ void BilibiliClient::parseOnePacket(const QByteArray &packet) {
         return;
     }
     if (operation != 5) return;
-    if (version == 2) {
-        z_stream stream{};
-        stream.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(body.constData()));
-        stream.avail_in = uInt(body.size());
-        if (inflateInit(&stream) != Z_OK) return;
-        QByteArray output;
-        char buffer[16384];
-        int result = Z_OK;
-        while (result == Z_OK) {
-            stream.next_out = reinterpret_cast<Bytef *>(buffer);
-            stream.avail_out = sizeof(buffer);
-            result = inflate(&stream, Z_NO_FLUSH);
-            const int produced = int(sizeof(buffer) - stream.avail_out);
-            if (produced > 0) output.append(buffer, produced);
-            if (output.size() > 8 * 1024 * 1024) { result = Z_DATA_ERROR; break; }
-        }
-        inflateEnd(&stream);
-        if (result == Z_STREAM_END) parsePackets(output);
+    if (version == 2 || version == 3) {
+        // The client requests uncompressed protocol frames (protover=0).
+        // Reject compressed payloads rather than using an API that cannot enforce
+        // a strict decompressed-size ceiling on untrusted input.
+        emit log("收到未协商的压缩弹幕数据包，已拒绝处理。");
         return;
     }
     if (version == 0 || version == 1) {
@@ -300,23 +300,63 @@ void BilibiliClient::parseOnePacket(const QByteArray &packet) {
 
 void BilibiliClient::handleCommand(const QJsonObject &object) {
     const QString cmd = object.value("cmd").toString();
-    if (!cmd.startsWith("DANMU_MSG")) return;
-    const QJsonArray info = object.value("info").toArray();
-    if (info.size() < 3) return;
-    const QString text = info.at(1).toString().trimmed();
-    const QJsonArray user = info.at(2).toArray();
-    if (text.isEmpty() || user.size() < 2) return;
-    const qint64 uid = user.at(0).toVariant().toLongLong();
-    const QString name = user.at(1).toString();
-    emit danmaku(uid, name, text);
+    if (cmd.startsWith("DANMU_MSG")) {
+        const QJsonArray info = object.value("info").toArray();
+        if (info.size() < 3) return;
+        const QString text = info.at(1).toString().trimmed();
+        const QJsonArray user = info.at(2).toArray();
+        if (text.isEmpty() || user.size() < 2) return;
+        const qint64 uid = user.at(0).toVariant().toLongLong();
+        const QString name = user.at(1).toString();
+        emit danmaku(uid, name, text);
+        emit eventReceived(QJsonObject{{"type","danmaku"},{"uid",uid},{"user",name},
+            {"text",text},{"timestamp",QDateTime::currentSecsSinceEpoch()}});
+        return;
+    }
+    const QJsonObject data = object.value("data").toObject();
+    if (cmd == "SEND_GIFT") {
+        emit eventReceived(QJsonObject{{"type","gift"},
+            {"uid",data.value("uid").toVariant().toLongLong()},
+            {"user",data.value("uname").toString()},
+            {"gift_id",data.value("giftId").toVariant().toLongLong()},
+            {"gift",data.value("giftName").toString()},
+            {"count",qMax(1,data.value("num").toInt(1))},
+            {"price",data.value("price").toVariant().toLongLong()},
+            {"total_coin",data.value("total_coin").toVariant().toLongLong()},
+            {"coin_type",data.value("coin_type").toString()},
+            {"timestamp",QDateTime::currentSecsSinceEpoch()}});
+        return;
+    }
+    if (cmd == "SUPER_CHAT_MESSAGE") {
+        const QJsonObject user = data.value("user_info").toObject();
+        emit eventReceived(QJsonObject{{"type","superchat"},
+            {"uid",user.value("uid").toVariant().toLongLong()},
+            {"user",user.value("uname").toString()},
+            {"message",data.value("message").toString()},
+            {"price",data.value("price").toInt()},
+            {"message_id",data.value("id").toVariant().toLongLong()},
+            {"timestamp",QDateTime::currentSecsSinceEpoch()}});
+        return;
+    }
+    if (cmd == "GUARD_BUY") {
+        emit eventReceived(QJsonObject{{"type","guard_buy"},
+            {"uid",data.value("uid").toVariant().toLongLong()},
+            {"user",data.value("username").toString()},
+            {"guard_level",data.value("guard_level").toInt()},
+            {"count",qMax(1,data.value("num").toInt(1))},
+            {"price",data.value("price").toVariant().toLongLong()},
+            {"timestamp",QDateTime::currentSecsSinceEpoch()}});
+    }
 }
 
 void BilibiliClient::sendDanmaku(const QString &text) {
     if (text.trimmed().isEmpty() || csrf_.isEmpty()) return;
     QUrl url("https://api.live.bilibili.com/msg/send");
     QNetworkRequest request(url);
+    request.setTransferTimeout(30000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setRawHeader("Cookie", cookie_.toUtf8());
-    request.setRawHeader("User-Agent", "Mozilla/5.0 BilibiliBot/0.1");
+    request.setRawHeader("User-Agent", "Mozilla/5.0 BilibiliBot/1.0");
     request.setRawHeader("Referer", QString("https://live.bilibili.com/%1").arg(realRoomId_).toUtf8());
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
     QUrlQuery form;
@@ -329,6 +369,7 @@ void BilibiliClient::sendDanmaku(const QString &text) {
     form.addQueryItem("csrf", csrf_);
     form.addQueryItem("csrf_token", csrf_);
     QNetworkReply *reply = network_.post(request, form.query(QUrl::FullyEncoded).toUtf8());
+    reply->setReadBufferSize(1024 * 1024);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         const QByteArray data = reply->readAll();
         const auto error = reply->error();

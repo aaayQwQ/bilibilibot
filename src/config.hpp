@@ -19,6 +19,8 @@ struct Config {
     int userCooldownSeconds = 15;
     int roomCooldownSeconds = 3;
     int memoryTurns = 4;
+    bool pluginsEnabled = false;
+    bool pluginSendDanmakuEnabled = false;
 
     bool load(const QString &path, QString *error);
 };

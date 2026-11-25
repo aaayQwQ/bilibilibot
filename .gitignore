@@ -3,3 +3,14 @@ out/
 *.user
 *.log
 config.ini
+
+# Local credentials and secrets
+cookie.txt
+*.cookie
+.env
+.env.*
+*.pem
+*.key
+
+# Build and packaging output
+dist/

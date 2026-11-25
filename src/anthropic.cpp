@@ -32,8 +32,9 @@ void AIClient::generate(const QString &userName, const QString &message, const Q
     }
 
     const QUrl url(endpoint);
-    if (!url.isValid() || (url.scheme() != "https" && url.scheme() != "http") || url.host().isEmpty()) {
-        emit failed("AI Base URL 无效：必须是有效的 http:// 或 https:// 地址。");
+    if (!url.isValid() || url.scheme() != "https" || url.host().isEmpty() ||
+        !url.userInfo().isEmpty() || !url.query().isEmpty() || !url.fragment().isEmpty()) {
+        emit failed("AI Base URL 无效：必须是无用户信息、无查询参数的 HTTPS 地址。");
         return;
     }
 
@@ -65,6 +66,8 @@ void AIClient::generate(const QString &userName, const QString &message, const Q
     }
 
     QNetworkRequest request(url);
+    request.setTransferTimeout(45000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("accept", "application/json");
     if (useOpenAI) {
@@ -75,6 +78,7 @@ void AIClient::generate(const QString &userName, const QString &message, const Q
     }
 
     QNetworkReply *reply = network_.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    reply->setReadBufferSize(2 * 1024 * 1024);
     connect(reply, &QNetworkReply::finished, this, [this, reply, useOpenAI]() {
         const QByteArray data = reply->readAll();
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
