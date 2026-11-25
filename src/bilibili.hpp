@@ -10,6 +10,7 @@
 #include <QPair>
 #include <QUrl>
 #include <functional>
+#include <functional>
 
 class BilibiliClient final : public QObject {
     Q_OBJECT
@@ -17,7 +18,8 @@ public:
     BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObject *parent = nullptr);
     void start();
     void stop();
-    void sendDanmaku(const QString &text, quint64 requestId = 0);
+    void sendDanmaku(const QString &text, quint64 requestId = 0,
+                     std::function<void(bool)> completion = {});
     qint64 ownUid() const { return ownUid_; }
 
 signals:
@@ -60,7 +62,12 @@ private:
     QTimer heartbeat_;
     QTimer reconnect_;
     QTimer sendThrottle_;
-    QQueue<QPair<quint64, QString>> sendQueue_;
+    struct QueuedDanmaku {
+        quint64 requestId = 0;
+        QString text;
+        std::function<void(bool)> completion;
+    };
+    QQueue<QueuedDanmaku> sendQueue_;
     bool sendBusy_ = false;
     bool stopped_ = true;
     bool connecting_ = false;
