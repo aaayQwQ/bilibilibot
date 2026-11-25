@@ -11,6 +11,7 @@
 #include <QMap>
 #include <QByteArray>
 #include <QStringList>
+#include <cmath>
 #include <utility>
 
 namespace {
@@ -22,9 +23,18 @@ QJsonValue firstField(const QJsonObject &object, const QStringList &keys) {
     }
     return {};
 }
+qint64 safeInteger(const QJsonValue &value, qint64 fallback = 0) {
+    if (!value.isDouble()) return fallback;
+    const double number = value.toDouble();
+    constexpr double MinInclusive = -9223372036854775808.0;
+    constexpr double MaxExclusive = 9223372036854775808.0;
+    if (!std::isfinite(number) || number < MinInclusive || number >= MaxExclusive)
+        return fallback;
+    return static_cast<qint64>(number);
+}
 qint64 numericField(const QJsonObject &object, const QStringList &keys, qint64 fallback = 0) {
     const QJsonValue value = firstField(object, keys);
-    if (value.isDouble()) return qint64(value.toDouble());
+    if (value.isDouble()) return safeInteger(value, fallback);
     if (value.isString()) {
         bool ok = false;
         const qint64 parsed = value.toString().trimmed().toLongLong(&ok);
@@ -405,7 +415,7 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
         const QString text = info.at(1).toString().trimmed();
         const QJsonArray user = info.at(2).toArray();
         if (text.isEmpty() || user.size() < 2) return;
-        const qint64 uid = user.at(0).toVariant().toLongLong();
+        const qint64 uid = safeInteger(user.at(0), 0);
         const QString name = user.at(1).toString();
         emit danmaku(uid, name, text);
         emit eventReceived(QJsonObject{{"type","danmaku"},{"uid",uid},{"user",name},
@@ -494,18 +504,38 @@ void BilibiliClient::dispatchNextDanmaku() {
     form.addQueryItem("csrf", csrf_);
     form.addQueryItem("csrf_token", csrf_);
     sendBusy_ = true;
+    constexpr qsizetype MaxSendResponseBytes = 64 * 1024;
     QNetworkReply *reply = network_.post(request, form.query(QUrl::FullyEncoded).toUtf8());
-    connect(reply, &QNetworkReply::finished, this, [this, reply, requestId, text]() {
+    reply->setReadBufferSize(MaxSendResponseBytes + 1);
+    auto response = QSharedPointer<QByteArray>::create();
+    auto oversized = QSharedPointer<bool>::create(false);
+    connect(reply, &QIODevice::readyRead, this, [reply, response, oversized]() {
+        const qsizetype remaining = MaxSendResponseBytes + 1 - response->size();
+        if (remaining > 0) response->append(reply->read(remaining));
+        if (response->size() > MaxSendResponseBytes) {
+            *oversized = true;
+            reply->abort();
+        }
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply, requestId, text, response, oversized]() {
+        if (!*oversized && reply->isOpen()) {
+            const qsizetype remaining = MaxSendResponseBytes + 1 - response->size();
+            if (remaining > 0) response->append(reply->read(remaining));
+            if (response->size() > MaxSendResponseBytes) *oversized = true;
+        }
         const auto error = reply->error();
         const QString errorString = reply->errorString();
-        const QByteArray data = reply->isOpen() ? reply->readAll() : QByteArray();
+        const QByteArray data = *response;
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         reply->deleteLater();
         sendBusy_ = false;
         if (stopped_) return;
         bool success = error == QNetworkReply::NoError && status >= 200 && status < 300;
         QString reason;
-        if (!success) {
+        if (*oversized) {
+            success = false;
+            reason = "Bilibili 弹幕发送响应超过 64 KiB 上限，已取消请求。";
+        } else if (!success) {
             reason = error != QNetworkReply::NoError ? errorString : QString("HTTP %1").arg(status);
         } else {
             QJsonParseError parseError{};
