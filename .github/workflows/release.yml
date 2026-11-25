@@ -1,4 +1,4 @@
-name: Publish v1.0.1 Release
+name: Publish v1.0.2 Release
 on:
   workflow_run:
     workflows: ["Build and Test"]
@@ -24,7 +24,7 @@ jobs:
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           message=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA" --jq '.commit.message')
-          if grep -Fq '[release v1.0.1]' <<< "$message"; then
+          if grep -Fq '[release v1.0.2]' <<< "$message"; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -68,17 +68,17 @@ jobs:
           test -n "$(find release-zips -maxdepth 1 -name '*.zip' -print -quit)"
           ls -lh release-zips
 
-      - name: Create v1.0.1 release and upload tested binaries
+      - name: Create v1.0.2 release and upload tested binaries
         if: steps.release_guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if ! gh release view v1.0.1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create v1.0.1 --repo "$GITHUB_REPOSITORY" \
+          if ! gh release view v1.0.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create v1.0.2 --repo "$GITHUB_REPOSITORY" \
               --target "$TARGET_SHA" \
-              --title "bilibilibot v1.0.1" \
+              --title "bilibilibot v1.0.2" \
               --notes-file CHANGELOG.md
           fi
-          gh release upload v1.0.1 release-zips/*.zip \
+          gh release upload v1.0.2 release-zips/*.zip \
             --repo "$GITHUB_REPOSITORY" --clobber
