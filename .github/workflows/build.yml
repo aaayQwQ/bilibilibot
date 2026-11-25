@@ -1,24 +1,18 @@
-name: Build
-
+name: Build and Test
 on:
   push:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'CMakeLists.txt'
-      - '.github/workflows/build.yml'
+    branches: [ main, "release/v1.0.0" ]
+    tags: [ "v*" ]
+  pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: bilibilibot-build-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   build:
-    name: ${{ matrix.os }} / ${{ matrix.name }}
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
@@ -37,60 +31,39 @@ jobs:
             artifact: bilibilibot-macos-x64
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
+      - uses: actions/checkout@v4
+      - name: Install Linux build tools
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake g++ zlib1g-dev
-
-      - name: Install Windows zlib
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: vcpkg install zlib:x64-windows-static
-
-      - name: Install macOS zlib
-        if: runner.os == 'macOS'
-        run: brew install zlib
-
+        run: sudo apt-get update && sudo apt-get install -y cmake g++
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
+          version: "6.8.3"
           host: ${{ runner.os == 'Windows' && 'windows' || runner.os == 'macOS' && 'mac' || 'linux' }}
-          target: 'desktop'
+          target: desktop
           arch: ${{ matrix.qt_arch }}
-          modules: 'qtwebsockets'
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
-
-      - name: Configure (Linux/macOS)
-        if: runner.os != 'Windows'
+          modules: qtwebsockets
+      - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-
       - name: Build
         run: cmake --build build --config Release --parallel
-
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
       - name: Stage executable
         shell: bash
         run: |
           mkdir -p dist
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp build/Release/bilibilibot.exe dist/
-            windeployqt --dir dist --release --no-translations dist/bilibilibot.exe
+            windeployqt --dir dist --release --no-translations --compiler-runtime dist/bilibilibot.exe
           else
             cp build/bilibilibot dist/
           fi
-          cp config.ini.example dist/
-
+          cp config.ini.example README.md dist/
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: dist/*
           if-no-files-found: error
+          retention-days: 14
