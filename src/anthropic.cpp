@@ -1,4 +1,5 @@
 #include "anthropic.hpp"
+#include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -9,7 +10,26 @@
 AIClient::AIClient(const Config &config, QObject *parent)
     : QObject(parent), config_(config) {}
 
+void AIClient::stop() {
+    if (stopped_) return;
+    stopped_ = true;
+
+    const auto replies = pendingReplies_.values();
+    pendingReplies_.clear();
+    for (QNetworkReply *reply : replies) {
+        if (!reply) continue;
+        QObject::disconnect(reply, nullptr, this, nullptr);
+        if (reply->isRunning()) reply->abort();
+        reply->deleteLater();
+    }
+}
+
 void AIClient::generate(const QString &userName, const QString &message, const QJsonArray &history) {
+    if (stopped_) {
+        emit failed("AI 客户端已停止，拒绝提交新请求。");
+        return;
+    }
+
     QString base = config_.aiBaseUrl.trimmed();
     while (base.endsWith('/')) base.chop(1);
 
@@ -66,7 +86,9 @@ void AIClient::generate(const QString &userName, const QString &message, const Q
     }
 
     QNetworkRequest request(url);
-    request.setTransferTimeout(45000);
+    // Reasoning models may spend a long time before returning the first byte.
+    // Transfer timeout is an inactivity timeout, not a total request deadline.
+    request.setTransferTimeout(120000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("accept", "application/json");
@@ -77,28 +99,55 @@ void AIClient::generate(const QString &userName, const QString &message, const Q
         request.setRawHeader("anthropic-version", "2023-06-01");
     }
 
-    QNetworkReply *reply = network_.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    reply->setReadBufferSize(2 * 1024 * 1024);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, useOpenAI]() {
-        const QByteArray data = reply->readAll();
-        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    auto *reply = network_.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    pendingReplies_.insert(reply);
+    auto *elapsed = new QElapsedTimer;
+    elapsed->start();
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, useOpenAI, url, elapsed]() {
+        const qint64 elapsedMs = elapsed->isValid() ? elapsed->elapsed() : -1;
+        delete elapsed;
+
+        pendingReplies_.remove(reply);
         const auto netError = reply->error();
         const QString networkError = reply->errorString();
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const bool deviceOpen = reply->isOpen();
+
+        // QNetworkReply can be closed when an operation is aborted. readAll()
+        // on that closed device produces "QIODevice::read: device not open".
+        // Only consume the body while the reply is still open.
+        QByteArray data;
+        if (deviceOpen && reply->bytesAvailable() > 0)
+            data = reply->readAll();
+
         reply->deleteLater();
+        if (stopped_) return;
 
         if (netError != QNetworkReply::NoError || status < 200 || status >= 300) {
-            QString detail = QString::fromUtf8(data.left(1200));
-            if (detail.isEmpty()) detail = networkError;
-            emit failed(QString("%1 API 请求失败（HTTP %2）：%3")
+            QString detail;
+            if (netError == QNetworkReply::OperationCanceledError) {
+                detail = QString("请求被取消（%1）；耗时 %2 ms；响应设备%3。")
+                    .arg(networkError)
+                    .arg(elapsedMs)
+                    .arg(deviceOpen ? "仍打开" : "已关闭");
+            } else if (!data.isEmpty()) {
+                detail = QString::fromUtf8(data.left(1200));
+            } else {
+                detail = networkError;
+            }
+
+            emit failed(QString("%1 API 请求失败（HTTP %2，主机 %3）：%4")
                 .arg(useOpenAI ? "OpenAI-compatible" : "Anthropic")
-                .arg(status).arg(detail));
+                .arg(status)
+                .arg(url.host(), detail));
             return;
         }
 
         QJsonParseError parseError{};
         const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
         if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-            emit failed("AI 返回了无法解析的 JSON。");
+            emit failed(QString("AI 返回了无法解析的 JSON（%1 字节）。").arg(data.size()));
             return;
         }
 
