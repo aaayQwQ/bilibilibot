@@ -171,6 +171,8 @@ bool Config::load(const QString &path, QString *error) {
     memoryTurns = qBound(0, s.value("bot/memory_turns", 4).toInt(), 12);
     pluginsEnabled = s.value("plugins/enabled", false).toBool();
     pluginSendDanmakuEnabled = s.value("plugins/allow_send_danmaku", false).toBool();
+    logAiContent = s.value("logging/log_ai_content", false).toBool();
+    redactAiContent = s.value("logging/redact_ai_content", true).toBool();
 
     if (s.status() != QSettings::NoError) {
         if (error) *error = QStringLiteral("配置文件格式错误或无法读取：%1").arg(QFileInfo(path).absoluteFilePath());
