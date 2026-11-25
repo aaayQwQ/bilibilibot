@@ -2,6 +2,13 @@
 
 所有重要变更均记录于此。
 
+## [1.0.2] - 2026-11-25
+
+### Build fixes
+- Include QDir explicitly before using QFileInfo::absoluteDir(), fixing Windows, Linux and macOS compilation.
+- Use consistently typed qint64 bounds for gift and guard counts, fixing ambiguous qBound overload resolution across MSVC, GCC and Clang.
+- Require all three platform builds, Qt Test and CodeQL to pass before publishing v1.0.2.
+
 ## [1.0.1] - 2026-11-25
 
 ### 安全与稳定性
