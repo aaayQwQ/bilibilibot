@@ -5,6 +5,7 @@
 #include <QJsonValue>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QSharedPointer>
 #include <QUrl>
 #include <QStringList>
 
@@ -116,14 +117,31 @@ void AIClient::generate(qint64 uid, const QString &userName, const QString &mess
         request.setRawHeader("anthropic-version", "2023-06-01");
     }
 
+    constexpr qsizetype MaxAiResponseBytes = 2 * 1024 * 1024;
     auto *reply = network_.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    reply->setReadBufferSize(MaxAiResponseBytes + 1);
+    auto response = QSharedPointer<QByteArray>::create();
+    auto oversized = QSharedPointer<bool>::create(false);
+    connect(reply, &QIODevice::readyRead, this, [reply, response, oversized]() {
+        const qsizetype remaining = MaxAiResponseBytes + 1 - response->size();
+        if (remaining > 0) response->append(reply->read(remaining));
+        if (response->size() > MaxAiResponseBytes) {
+            *oversized = true;
+            reply->abort();
+        }
+    });
     pendingReplies_.insert(reply);
     QElapsedTimer elapsed;
     elapsed.start();
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, uid, userName, message, useOpenAI, url, elapsed]() mutable {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, uid, userName, message, useOpenAI, url, elapsed, response, oversized]() mutable {
         const qint64 elapsedMs = elapsed.isValid() ? elapsed.elapsed() : -1;
 
+        if (!*oversized && reply->isOpen()) {
+            const qsizetype remaining = MaxAiResponseBytes + 1 - response->size();
+            if (remaining > 0) response->append(reply->read(remaining));
+            if (response->size() > MaxAiResponseBytes) *oversized = true;
+        }
         pendingReplies_.remove(reply);
         const auto netError = reply->error();
         const QString networkError = reply->errorString();
@@ -133,12 +151,16 @@ void AIClient::generate(qint64 uid, const QString &userName, const QString &mess
         // QNetworkReply can be closed when an operation is aborted. readAll()
         // on that closed device produces "QIODevice::read: device not open".
         // Only consume the body while the reply is still open.
-        QByteArray data;
-        if (deviceOpen && reply->bytesAvailable() > 0)
-            data = reply->readAll();
+        const QByteArray data = *response;
 
         reply->deleteLater();
         if (stopped_) return;
+
+        if (*oversized) {
+            emit failed(uid, userName, message,
+                QString("AI 响应超过 2 MiB 上限，已取消请求（主机 %1）。").arg(url.host()));
+            return;
+        }
 
         if (netError != QNetworkReply::NoError || status < 200 || status >= 300) {
             QString detail;
