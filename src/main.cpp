@@ -168,6 +168,7 @@ int main(int argc, char *argv[]) {
     });
 
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &bilibili, &BilibiliClient::stop);
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &ai, &AIClient::stop);
     bilibili.start();
     return app.exec();
 }
