@@ -423,7 +423,7 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
         const QJsonObject user = data.value("user_info").toObject();
         emit eventReceived(QJsonObject{{"type","superchat"},
             {"uid",numericField(user, {"uid", "user_id"})},
-            {"user",textField(user, {"uname", "username", "user")},
+            {"user",textField(user, {"uname", "username", "user"})},
             {"message",data.value("message").toString()},
             {"price",data.value("price").toInt()},
             {"message_id",data.value("id").toVariant().toLongLong()},
