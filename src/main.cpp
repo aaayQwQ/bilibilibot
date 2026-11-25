@@ -141,13 +141,18 @@ int main(int argc, char *argv[]) {
         [&](qint64 uid, const QString &name, const QString &input, const QString &answer) {
             QString reply;
             reply.reserve(qMin<qsizetype>(answer.size(), config.maxReplyChars));
-            const QVector<uint> codePoints = answer.toUcs4();
-            for (uint codePoint : codePoints) {
-                const auto category = QChar::category(codePoint);
+            for (qsizetype i = 0; i < answer.size(); ++i) {
+                const QChar ch = answer.at(i);
+                if (ch.isHighSurrogate() && i + 1 < answer.size() && answer.at(i + 1).isLowSurrogate()) {
+                    reply.append(ch);
+                    reply.append(answer.at(++i));
+                    continue;
+                }
+                const auto category = ch.category();
                 if (category == QChar::Other_Control || category == QChar::Other_Format ||
                     category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
                     continue;
-                reply.append(QString::fromUcs4(&codePoint, 1));
+                reply.append(ch);
             }
             reply = reply.simplified();
             if (reply.size() > config.maxReplyChars)
