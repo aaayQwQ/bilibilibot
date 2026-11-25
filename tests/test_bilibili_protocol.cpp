@@ -22,6 +22,18 @@ private slots:
         client.parsePackets(packet);
         QVERIFY(!logs.isEmpty());
     }
+    void rejectsOutOfRangeEventNumbers() {
+        BilibiliClient client(1, {}, {});
+        QSignalSpy events(&client, &BilibiliClient::eventReceived);
+        const QJsonObject command{{"cmd","SEND_GIFT"},{"data",QJsonObject{
+            {"uid",1.0e300},{"uname","tester"},{"giftName","heart"},
+            {"num",2},{"price",-1.0e300}}}};
+        client.handleCommand(command);
+        QCOMPARE(events.size(), 1);
+        const QJsonObject event = events.first().first().toJsonObject();
+        QCOMPARE(event.value("uid").toInteger(), qint64(0));
+        QCOMPARE(event.value("price").toInteger(), qint64(0));
+    }
     void ignoresUnknownOpcode() {
         BilibiliClient client(1, {}, {});
         QSignalSpy events(&client, &BilibiliClient::eventReceived);
