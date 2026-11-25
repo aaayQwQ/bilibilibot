@@ -1,6 +1,6 @@
-#include "anthropic.h"
-#include "bilibili.h"
-#include "config.h"
+#include "anthropic.hpp"
+#include "bilibili.hpp"
+#include "config.hpp"
 
 #include <QCoreApplication>
 #include <QCommandLineParser>
