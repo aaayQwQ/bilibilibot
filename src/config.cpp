@@ -6,6 +6,8 @@
 #include <QMap>
 #include <QSettings>
 #include <QRegularExpression>
+#include <QUrl>
+#include <QHostAddress>
 
 namespace {
 QMap<QString, QString> parseCookieFields(QString raw) {
@@ -119,6 +121,12 @@ bool Config::load(const QString &path, QString *error) {
     aiBaseUrl = s.value("ai/base_url").toString().trimmed();
     aiApiKey = s.value("ai/api_key").toString().trimmed();
     aiModel = s.value("ai/model").toString().trimmed();
+    aiAllowedHosts.clear();
+    for (const QString &host : s.value("ai/allowed_hosts").toString().split(';', Qt::SkipEmptyParts)) {
+        const QString normalized = host.trimmed().toLower();
+        if (!normalized.isEmpty() && !aiAllowedHosts.contains(normalized))
+            aiAllowedHosts.push_back(normalized);
+    }
     thinking = s.value("ai/thinking", false).toBool();
     maxTokens = qBound(64, s.value("ai/max_tokens", 512).toInt(), 8192);
     systemPrompt = s.value("ai/system_prompt",
@@ -170,6 +178,25 @@ bool Config::load(const QString &path, QString *error) {
         if (error) *error = "请填写 ai.base_url、ai.api_key 和 ai.model。";
         return false;
     }
+    const QUrl aiUrl(aiBaseUrl);
+    QHostAddress literalAddress;
+    const QString aiHost = aiUrl.host().toLower();
+    const bool localHost = aiHost == "localhost" || aiHost.endsWith(".localhost") ||
+        aiHost.endsWith(".local") || aiHost.endsWith(".internal") ||
+        aiHost == "metadata.google.internal";
+    if (!aiUrl.isValid() || aiUrl.scheme() != "https" || aiHost.isEmpty() ||
+        !aiUrl.userInfo().isEmpty() || !aiUrl.query().isEmpty() || !aiUrl.fragment().isEmpty() ||
+        literalAddress.setAddress(aiHost) || localHost) {
+        if (error) *error = "ai.base_url 必须是 HTTPS 公网域名，禁止 IP 字面量、本地域名、用户信息、查询参数和片段。";
+        return false;
+    }
+    if (!aiAllowedHosts.contains(aiHost)) {
+        if (error) *error = QString("AI 主机 %1 不在 ai.allowed_hosts 显式白名单中。").arg(aiHost);
+        return false;
+    }
+    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    QFile::setPermissions(QFileInfo(path).dir().filePath("cookie.txt"),
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     if (keywords.isEmpty()) {
         if (error) *error = "bot.keywords 至少需要配置一个关键词。";
         return false;
