@@ -15,7 +15,7 @@
 - Require HTTPS for AI API endpoints.
 - Disable automatic redirects for authenticated requests.
 - Bound WebSocket frames/messages and network read buffers.
-- Replace direct zlib C API usage with Qt compression API and an 8 MiB output ceiling.
+- Negotiate uncompressed WebSocket frames and reject unnegotiated compressed payloads to avoid unbounded decompression.
 - Do not load arbitrary native plugins or execute scripts/processes.
 
 ### Build

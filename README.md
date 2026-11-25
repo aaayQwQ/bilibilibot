@@ -11,7 +11,7 @@
 - 插件总开关与发送弹幕权限分离，默认全部关闭。
 - AI 服务强制 HTTPS；敏感请求不自动跟随重定向。
 - 为网络请求设置超时、读取缓冲和 WebSocket 消息上限。
-- 移除直接调用 zlib C API，改用 Qt 压缩接口并限制解压数据大小。
+- 默认协商未压缩弹幕帧，拒绝未协商的压缩数据，避免解压炸弹风险。
 - 加入 Qt Test 自动化测试和 GitHub CodeQL C++ 安全扫描。
 - GitHub Actions 构建 Windows x64、Linux x64、macOS x64。
 
@@ -72,7 +72,7 @@ Windows MSVC 需要安装 Qt 6 对应的 MSVC Kit。GitHub Actions 会自动构�
 - 插件默认关闭，发送弹幕需要二次授权。
 - AI 请求强制 HTTPS，关闭敏感请求的自动重定向。
 - 增加网络超时、缓冲区及压缩数据大小限制。
-- 移除项目对 zlib C API 的直接调用。
+- 移除项目对 zlib C API 的直接调用，并关闭未协商的压缩帧。
 - 增加 Qt Test 与 GitHub CodeQL C++ 安全分析。
 - 统一版本号为 1.0.0。
 

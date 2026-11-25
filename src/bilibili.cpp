@@ -32,7 +32,7 @@ BilibiliClient::BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObj
         QJsonObject auth{
             {"uid", ownUid_},
             {"roomid", realRoomId_},
-            {"protover", 2},
+            {"protover", 0},
             {"platform", "web"},
             {"type", 2},
             {"key", danmuToken_}
@@ -283,21 +283,11 @@ void BilibiliClient::parseOnePacket(const QByteArray &packet) {
         return;
     }
     if (operation != 5) return;
-    if (version == 2) {
-        // Qt qUncompress consumes the zlib stream with a four-byte output-size prefix.
-        // The declared maximum is 8 MiB; oversized output is rejected.
-        QByteArray wrapped;
-        wrapped.reserve(body.size() + 4);
-        wrapped.append(char(0x00));
-        wrapped.append(char(0x80));
-        wrapped.append(char(0x00));
-        wrapped.append(char(0x00));
-        wrapped.append(body);
-        const QByteArray output = qUncompress(wrapped);
-        if (!output.isEmpty() && output.size() <= 8 * 1024 * 1024)
-            parsePackets(output);
-        else
-            emit log("忽略无效或超限的压缩弹幕数据包。");
+    if (version == 2 || version == 3) {
+        // The client requests uncompressed protocol frames (protover=0).
+        // Reject compressed payloads rather than using an API that cannot enforce
+        // a strict decompressed-size ceiling on untrusted input.
+        emit log("收到未协商的压缩弹幕数据包，已拒绝处理。");
         return;
     }
     if (version == 0 || version == 1) {
