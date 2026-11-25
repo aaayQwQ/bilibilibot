@@ -22,6 +22,8 @@ struct Config {
     int memoryTurns = 4;
     bool pluginsEnabled = false;
     bool pluginSendDanmakuEnabled = false;
+    bool logAiContent = false;
+    bool redactAiContent = true;
 
     bool load(const QString &path, QString *error);
 };
