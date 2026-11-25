@@ -101,12 +101,11 @@ void AIClient::generate(const QString &userName, const QString &message, const Q
 
     auto *reply = network_.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
     pendingReplies_.insert(reply);
-    auto *elapsed = new QElapsedTimer;
-    elapsed->start();
+    QElapsedTimer elapsed;
+    elapsed.start();
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, useOpenAI, url, elapsed]() {
-        const qint64 elapsedMs = elapsed->isValid() ? elapsed->elapsed() : -1;
-        delete elapsed;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, useOpenAI, url, elapsed]() mutable {
+        const qint64 elapsedMs = elapsed.isValid() ? elapsed.elapsed() : -1;
 
         pendingReplies_.remove(reply);
         const auto netError = reply->error();
