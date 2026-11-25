@@ -48,7 +48,7 @@ private slots:
         QStringList sent;
         PluginManager manager(dir.path(), true, true, [&sent](const QString &s){ sent.push_back(s); });
         manager.load();
-        manager.dispatch(QJsonObject{{"type","gift"},{"user",QStringLiteral("A\nB\u202e")}});
+        manager.dispatch(QJsonObject{{"type","gift"},{"count",1},{"user",QStringLiteral("A\nB\u202e")}});
         QCOMPARE(sent.size(), 1);
         QVERIFY(!sent.first().contains('\n'));
         QVERIFY(!sent.first().contains(QChar(0x202e)));
@@ -71,8 +71,9 @@ private slots:
         QStringList sent;
         PluginManager manager(dir.path(), true, true, [&sent](const QString &s){ sent.push_back(s); });
         manager.load();
-        const QJsonObject event{{"type","gift"}};
+        const QJsonObject event{{"type","gift"},{"count",1}};
         manager.dispatch(event);
+        QTest::qWait(3100); // Let the room-wide throttle expire; the per-plugin cooldown must still block.
         manager.dispatch(event);
         QCOMPARE(sent.size(), 1);
     }
