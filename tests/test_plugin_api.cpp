@@ -63,6 +63,18 @@ private slots:
         PluginManager manager(dir.path(), true, true, [](const QString &) {});
         manager.load(); QCOMPARE(manager.pluginCount(), 0);
     }
+    void cooldownBlocksImmediateRepeat() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        QVERIFY(writeManifest(dir.path(), "cooldown.json",
+            R"({"schema_version":1,"id":"cooldown","enabled":true,"event":"gift","cooldown_seconds":30,"action":{"type":"send_danmaku","template":"thanks"}})"));
+        QStringList sent;
+        PluginManager manager(dir.path(), true, true, [&sent](const QString &s){ sent.push_back(s); });
+        manager.load();
+        const QJsonObject event{{"type","gift"}};
+        manager.dispatch(event);
+        manager.dispatch(event);
+        QCOMPARE(sent.size(), 1);
+    }
     void malformedJsonIsIgnored() {
         QTemporaryDir dir; QVERIFY(dir.isValid());
         QVERIFY(writeManifest(dir.path(), "broken.json", "{not-json"));
