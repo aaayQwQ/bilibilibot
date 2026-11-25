@@ -30,6 +30,7 @@ signals:
     void danmakuSendFinished(quint64 requestId, const QString &text, bool success, const QString &reason);
 
 private:
+    friend class BilibiliProtocolTest;
     using JsonCallback = std::function<void(const QJsonObject &)>;
     void requestJson(const QUrl &url, JsonCallback callback);
     void beginLogin();
