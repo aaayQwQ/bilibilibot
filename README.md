@@ -1,8 +1,18 @@
-# bilibilibot 1.0.2 — 弹幕有回应，直播更有趣
+# bilibilibot 1.0.3 — 弹幕有回应，直播更有趣
 
 **Qt 6 · C++17 · 跨平台 · 安全优先**
 
 轻量级 Bilibili 直播间机器人，通过 Qt Network / WebSockets 连接弹幕服务，可接入 OpenAI 兼容或 Anthropic Messages API，并提供受限的 JSON 声明式插件接口。
+
+## 1.0.3 安全加固与测试更新
+
+- 远端 JSON 数值转换前检查有限性和 qint64 边界，拒绝越界值。
+- AI 响应限制为 2 MiB，Bilibili 弹幕发送响应限制为 64 KiB，超限立即取消。
+- 配置文件与 Cookie 在读取前尝试收紧权限，失败时输出安全警告；Windows 需额外检查 NTFS ACL。
+- 保留 emoji 和其他合法补充平面 Unicode 字符。
+- 默认不记录 AI 回复全文；可通过 logging 配置显式启用，并默认进行凭据字段脱敏。
+- 增加 Bilibili 协议解析边界测试、异常数字和 Unicode 测试。
+- CI 增加 Linux ASan/UBSan 测试，并将外部 Actions 固定到完整提交 SHA，由 Dependabot 每周检查更新。
 
 ## 1.0.2 编译修复与验证更新
 
@@ -21,7 +31,7 @@
 - 只有 Bilibili API 明确发送成功后才登记弹幕回显去重。
 - AI 和插件发送共用有界队列，默认至少间隔 1 秒。
 - AI Base URL 使用精确主机白名单；观众输入按不可信内容处理。
-- 配置文件和 Cookie 尽力收紧为所有者读写权限。
+- 配置文件和 Cookie 在读取前尽力收紧为所有者读写权限；Windows 仍需检查实际 NTFS ACL。
 
 ## 1.0.0 新功能
 
