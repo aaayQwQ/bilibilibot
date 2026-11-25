@@ -9,9 +9,7 @@ permissions:
   contents: write
 jobs:
   publish:
-    if: >-
-      ${{ github.event.workflow_run.conclusion == 'success' &&
-          contains(github.event.workflow_run.head_commit.message, '[release v1.0.0]') }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Check out the exact tested commit
@@ -19,7 +17,22 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      - name: Verify release marker on tested commit
+        id: release_guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          message=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA" --jq '.commit.message')
+          if grep -Fq '[release v1.0.0]' <<< "$message"; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "This successful build is not marked for release; skipping publication."
+          fi
+
       - name: Verify CodeQL completed successfully for this commit
+        if: steps.release_guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -38,12 +51,14 @@ jobs:
           exit 1
 
       - name: Download tested platform artifacts
+        if: steps.release_guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
         run: gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --dir release-assets
 
       - name: Create platform archives
+        if: steps.release_guard.outputs.enabled == 'true'
         run: |
           mkdir -p release-zips
           for dir in release-assets/*/; do
@@ -53,6 +68,7 @@ jobs:
           ls -lh release-zips
 
       - name: Point v1.0.0 tag at the exact tested commit
+        if: steps.release_guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -61,6 +77,7 @@ jobs:
             -f sha="$TARGET_SHA" -F force=true
 
       - name: Publish GitHub Release
+        if: steps.release_guard.outputs.enabled == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0
