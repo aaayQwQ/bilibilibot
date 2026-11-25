@@ -96,6 +96,9 @@ void BilibiliClient::stop() {
     connecting_ = false;
     heartbeat_.stop();
     reconnect_.stop();
+    sendThrottle_.stop();
+    sendQueue_.clear();
+    sendBusy_ = false;
 
     // Detach callbacks before aborting replies: abort() emits finished(), and
     // shutdown must not schedule reconnects or invoke application callbacks.
