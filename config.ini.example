@@ -8,8 +8,10 @@ room_id=0
 ; 协议选择：openai 或 anthropic
 ; openai 使用 /v1/chat/completions；anthropic 使用 /v1/messages
 protocol=anthropic
-; API 根地址。可填写 https://api.example.com 或带 /v1 的地址
+; API 根地址。必须是 HTTPS 公网域名，并且必须与 allowed_hosts 完全一致。
 base_url=https://api.example.com
+; 精确主机白名单，多个主机使用分号分隔。请替换为实际服务商域名。
+allowed_hosts=api.example.com
 api_key=
 model=
 ; true=启用思考：OpenAI 发送 reasoning_effort=medium；
