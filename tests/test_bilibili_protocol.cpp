@@ -30,7 +30,7 @@ private slots:
             {"num",2},{"price",-1.0e300}}}};
         client.handleCommand(command);
         QCOMPARE(events.size(), 1);
-        const QJsonObject event = events.first().first().toJsonObject();
+        const QJsonObject event = qvariant_cast<QJsonObject>(events.first().first());
         QCOMPARE(event.value("uid").toInteger(), qint64(0));
         QCOMPARE(event.value("price").toInteger(), qint64(0));
     }
