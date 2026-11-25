@@ -12,7 +12,8 @@
 
 ### 测试与供应链
 - 新增 Bilibili 协议包头截断、长度越界、未知操作码、拼接包、包数上限和超大解压负载测试。
-- 新增插件极端数值和补充平面 Unicode 测试；新增无效 UTF-8 与过期 Cookie 测试。
+- 新增插件极端数值和补充平面/ZWJ emoji 测试；新增无效 UTF-8 与过期 Cookie 测试。
+- 插件冷却仅在 Bilibili 确认发送成功后启动；队列满、请求拒绝或发送失败不会消耗冷却时间。
 - 增加可选 ASan/UBSan 构建及 Linux CI Sanitizer job。
 - GitHub Actions 外部依赖固定到经过核对的完整提交 SHA，并启用 Dependabot 每周检查 GitHub Actions 依赖更新。
 
