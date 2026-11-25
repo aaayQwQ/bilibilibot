@@ -46,7 +46,7 @@ private slots:
         QVERIFY(error.contains("白名单"));
     }
     void rejectsLoopbackAndIpLiteralEndpoints() {
-        const QStringList urls{"https://127.0.0.1/v1", "https://localhost/v1"};
+        const QStringList urls{"https://127.0.0.1/v1", "https://localhost/v1", "https://2130706433/v1", "https://api.example.com:8443/v1"};
         for (const QString &url : urls) {
             QTemporaryDir dir; QVERIFY(dir.isValid());
             const QByteArray ini = QString(
