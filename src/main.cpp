@@ -157,8 +157,12 @@ int main(int argc, char *argv[]) {
                 reply.append(ch);
             }
             reply = reply.simplified();
-            if (reply.size() > config.maxReplyChars)
-                reply = reply.left(config.maxReplyChars).trimmed();
+            if (reply.size() > config.maxReplyChars) {
+                reply = reply.left(config.maxReplyChars);
+                if (!reply.isEmpty() && reply.back().isHighSurrogate())
+                    reply.chop(1);
+                reply = reply.trimmed();
+            }
             if (!reply.isEmpty()) {
                 const quint64 requestId = nextSendId++;
                 pendingReplies.insert(requestId,
