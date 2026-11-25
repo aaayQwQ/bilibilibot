@@ -419,7 +419,7 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
             {"user",textField(data, {"uname", "username", "user"})},
             {"gift_id",numericField(data, {"giftId", "gift_id", "giftid"})},
             {"gift",textField(data, {"giftName", "gift_name", "gift"})},
-            {"count",qBound<qint64>(1, numericField(data, {"num", "count"}, 1), 1000000)},
+            {"count",qBound<qint64>(qint64(1), numericField(data, {"num", "count"}, 1), qint64(1000000))},
             {"price",numericField(data, {"price", "unit_price"})},
             {"total_coin",numericField(data, {"total_coin", "totalCoin"})},
             {"coin_type",textField(data, {"coin_type", "coinType"})},
@@ -442,7 +442,7 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
             {"uid",numericField(data, {"uid", "user_id"})},
             {"user",textField(data, {"username", "uname", "user"})},
             {"guard_level",numericField(data, {"guard_level", "guardLevel"})},
-            {"count",qBound<qint64>(1, numericField(data, {"num", "count"}, 1), 1000000)},
+            {"count",qBound<qint64>(qint64(1), numericField(data, {"num", "count"}, 1), qint64(1000000))},
             {"price",numericField(data, {"price", "total_coin"})},
             {"timestamp",QDateTime::currentSecsSinceEpoch()}});
     }
