@@ -67,6 +67,11 @@ void PluginManager::load() {
     if (!enabled_) { emit log(QStringLiteral("插件系统处于关闭状态。")); return; }
     if (!allowSendDanmaku_ || !sender_)
         emit log(QStringLiteral("插件发送弹幕权限未授权，写操作保持关闭。"));
+    const QFileInfo directoryInfo(directory_);
+    if (directoryInfo.isSymLink()) {
+        emit log(QStringLiteral("插件目录是符号链接，拒绝加载。"));
+        return;
+    }
     QDir dir(directory_);
     if (!dir.exists()) { emit log(QStringLiteral("插件目录不存在：%1").arg(dir.absolutePath())); return; }
     const QFileInfoList files = dir.entryInfoList({QStringLiteral("*.json")},
