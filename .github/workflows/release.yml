@@ -52,6 +52,14 @@ jobs:
           done
           ls -lh release-zips
 
+      - name: Point v1.0.0 tag at the exact tested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/v1.0.0" \
+            -f sha="$TARGET_SHA" -F force=true
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
