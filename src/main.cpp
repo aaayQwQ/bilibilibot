@@ -60,7 +60,9 @@ int main(int argc, char *argv[]) {
     AIClient ai(config);
     const QString pluginDirectory = QFileInfo(parser.value(configOption)).absoluteDir().filePath("plugins");
     PluginManager plugins(pluginDirectory, config.pluginsEnabled, config.pluginSendDanmakuEnabled,
-                          [&bilibili](const QString &message) { bilibili.sendDanmaku(message); }, &app);
+                          [&bilibili](const QString &message, std::function<void(bool)> completion) {
+                              bilibili.sendDanmaku(message, 0, completion);
+                          }, &app);
     QObject::connect(&plugins, &PluginManager::log, &app, log);
     plugins.load();
     QObject::connect(&bilibili, &BilibiliClient::eventReceived, &plugins, &PluginManager::dispatch);
