@@ -6,6 +6,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QUrl>
+#include <QStringList>
 
 AIClient::AIClient(const Config &config, QObject *parent)
     : QObject(parent), config_(config) {}
