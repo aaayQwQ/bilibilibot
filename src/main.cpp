@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
     QObject::connect(&ai, &AIClient::finished, &app,
         [&](qint64 uid, const QString &name, const QString &input, const QString &answer) {
             QString reply;
-            reply.reserve(qMin(answer.size(), config.maxReplyChars));
+            reply.reserve(qMin<qsizetype>(answer.size(), config.maxReplyChars));
             for (const QChar ch : answer) {
                 const auto category = ch.category();
                 if (category == QChar::Other_Control || category == QChar::Other_Format ||
