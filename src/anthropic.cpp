@@ -1,4 +1,4 @@
-#include "anthropic.h"
+#include "anthropic.hpp"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
