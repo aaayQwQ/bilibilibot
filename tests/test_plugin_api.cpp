@@ -60,7 +60,7 @@ private slots:
         QStringList sent;
         PluginManager manager(dir.path(), true, true, [&sent](const QString &s){ sent.push_back(s); });
         manager.load();
-        const QString name = QString::fromUtf8("A😀𠀋");
+        const QString name = QString::fromUtf8("A😀𠀋👨‍👩‍👧‍👦");
         manager.dispatch(QJsonObject{{"type","gift"},{"count",1},{"user",name}});
         QCOMPARE(sent.size(), 1);
         QCOMPARE(sent.first(), QString("Hi ") + name);
