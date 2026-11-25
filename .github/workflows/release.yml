@@ -67,16 +67,10 @@ jobs:
           done
           ls -lh release-zips
 
-      - name: Publish GitHub Release
+      - name: Replace v1.0.0 release binaries
         if: steps.release_guard.outputs.enabled == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0.0
-          target_commitish: ${{ github.event.workflow_run.head_sha }}
-          name: bilibilibot v1.0.0 — 弹幕生态，正式开场
-          body_path: CHANGELOG.md
-          files: release-zips/*.zip
-          overwrite_files: true
-          fail_on_unmatched_files: true
-          draft: false
-          prerelease: false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v1.0.0 release-zips/*.zip \
+            --repo "$GITHUB_REPOSITORY" --clobber
