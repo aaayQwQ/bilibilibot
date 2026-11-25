@@ -449,7 +449,17 @@ void BilibiliClient::handleCommand(const QJsonObject &object) {
 }
 
 void BilibiliClient::sendDanmaku(const QString &text, quint64 requestId) {
-    const QString clean = text.simplified();
+    QString clean;
+    clean.reserve(qMin(text.size(), 180));
+    for (const QChar ch : text) {
+        const auto category = ch.category();
+        if (category == QChar::Other_Control || category == QChar::Other_Format ||
+            category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
+            continue;
+        if (clean.size() >= 180) break;
+        clean.append(ch);
+    }
+    clean = clean.simplified();
     if (stopped_ || clean.isEmpty() || clean.size() > 180 || csrf_.isEmpty() || realRoomId_ <= 0) {
         emit danmakuSendFinished(requestId, clean, false, "弹幕为空、超长或客户端尚未就绪。");
         return;
