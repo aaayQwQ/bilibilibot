@@ -6,26 +6,29 @@
 #include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QDateTime>
-#include <QDir>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QQueue>
-#include <QSet>
 #include <QTextStream>
 #include <QTimer>
+#include <QElapsedTimer>
 
 struct ChatRequest {
     qint64 uid = 0;
     QString name;
     QString text;
 };
+struct PendingReply {
+    ChatRequest request;
+    QString answer;
+};
 
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName("bilibilibot");
-    QCoreApplication::setApplicationVersion("1.0.0");
+    QCoreApplication::setApplicationVersion("1.0.1");
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Bilibili live-room AI danmaku bot");
@@ -47,8 +50,7 @@ int main(int argc, char *argv[]) {
         out << "[" << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
             << "] " << message << Qt::endl;
     };
-
-    log("bilibilibot 1.0.0 启动。");
+    log("bilibilibot 1.0.1 启动。");
     log(QString("直播间：%1；关键词：%2").arg(config.roomId).arg(config.keywords.join(" | ")));
     log("运行数据仅保存在内存中；按 Ctrl+C 退出。");
 
@@ -60,20 +62,23 @@ int main(int argc, char *argv[]) {
     QObject::connect(&plugins, &PluginManager::log, &app, log);
     plugins.load();
     QObject::connect(&bilibili, &BilibiliClient::eventReceived, &plugins, &PluginManager::dispatch);
+
     QHash<qint64, QJsonArray> histories;
-    QHash<qint64, qint64> userLastReply;
-    QHash<QString, qint64> recentBotMessages;
+    QHash<qint64, qint64> userLastReplyMs;
+    QHash<QString, qint64> recentBotMessagesMs;
+    QHash<quint64, PendingReply> pendingReplies;
     QQueue<ChatRequest> queue;
+    QElapsedTimer monotonicClock;
+    monotonicClock.start();
+    quint64 nextSendId = 1;
     bool busy = false;
-    ChatRequest current;
 
     auto processNext = [&]() {
         if (busy || queue.isEmpty()) return;
-        current = queue.dequeue();
+        const ChatRequest request = queue.dequeue();
         busy = true;
-        const QJsonArray history = histories.value(current.uid);
-        log(QString("AI 正在处理：%1（UID %2）").arg(current.name).arg(current.uid));
-        ai.generate(current.name, current.text, history);
+        log(QString("AI 正在处理：%1（UID %2）").arg(request.name).arg(request.uid));
+        ai.generate(request.uid, request.name, request.text, histories.value(request.uid));
     };
 
     QObject::connect(&bilibili, &BilibiliClient::log, &app, log);
@@ -83,89 +88,111 @@ int main(int argc, char *argv[]) {
     QObject::connect(&bilibili, &BilibiliClient::connected, &app, [&log]() {
         log("弹幕监听已就绪。");
     });
+
     QObject::connect(&bilibili, &BilibiliClient::danmaku, &app,
         [&](qint64 uid, const QString &name, const QString &text) {
-            const qint64 now = QDateTime::currentSecsSinceEpoch();
-
-            // Ignore only messages recently emitted by this process. Other messages
-            // written by the bot account itself remain eligible for keyword matching.
-            for (auto it = recentBotMessages.begin(); it != recentBotMessages.end();) {
-                if (it.value() < now - 45) it = recentBotMessages.erase(it);
+            const qint64 now = monotonicClock.elapsed();
+            for (auto it = recentBotMessagesMs.begin(); it != recentBotMessagesMs.end();) {
+                if (now - it.value() > 45000) it = recentBotMessagesMs.erase(it);
                 else ++it;
             }
-            if (uid == bilibili.ownUid() && recentBotMessages.contains(text)) {
-                recentBotMessages.remove(text);
-                log("忽略本程序刚刚发送的弹幕回显，防止自触发循环。");
+            if (uid == bilibili.ownUid() && recentBotMessagesMs.contains(text)) {
+                recentBotMessagesMs.remove(text);
+                log("忽略本程序已成功发送的弹幕回显，防止自触发循环。");
                 return;
             }
             if (uid == bilibili.ownUid() && !config.replyToSelf) return;
 
             bool matched = false;
             for (const QString &keyword : config.keywords) {
-                if (text.contains(keyword, Qt::CaseInsensitive)) {
-                    matched = true;
-                    break;
-                }
+                if (text.contains(keyword, Qt::CaseInsensitive)) { matched = true; break; }
             }
             if (!matched) return;
 
-            const qint64 previous = userLastReply.value(uid, 0);
-            if (config.userCooldownSeconds > 0 && now - previous < config.userCooldownSeconds) {
+            const qint64 previous = userLastReplyMs.value(uid, -1);
+            if (config.userCooldownSeconds > 0 && previous >= 0 &&
+                now - previous < qint64(config.userCooldownSeconds) * 1000) {
                 log(QString("忽略 %1：用户冷却中。").arg(name));
                 return;
             }
-            static qint64 roomLastReply = 0;
-            if (config.roomCooldownSeconds > 0 && now - roomLastReply < config.roomCooldownSeconds) {
+            static qint64 roomLastReplyMs = -1;
+            if (config.roomCooldownSeconds > 0 && roomLastReplyMs >= 0 &&
+                now - roomLastReplyMs < qint64(config.roomCooldownSeconds) * 1000) {
                 log(QString("忽略 %1：直播间回复冷却中。").arg(name));
                 return;
             }
-            // Bound all runtime-only state so a busy room cannot grow RAM forever.
             if (queue.size() >= 50) {
                 log("待处理队列已满，丢弃本次触发。");
                 return;
             }
-            for (auto it = userLastReply.begin(); it != userLastReply.end();) {
-                if (it.value() < now - 3600) it = userLastReply.erase(it);
+            for (auto it = userLastReplyMs.begin(); it != userLastReplyMs.end();) {
+                if (now - it.value() > 3600000) it = userLastReplyMs.erase(it);
                 else ++it;
             }
-            userLastReply.insert(uid, now);
-            roomLastReply = now;
-            queue.enqueue(ChatRequest{uid, name, text});
+            userLastReplyMs.insert(uid, now);
+            roomLastReplyMs = now;
+            queue.enqueue(ChatRequest{uid, name.left(64), text.left(2000)});
             processNext();
         });
 
-    QObject::connect(&ai, &AIClient::finished, &app, [&](const QString &answer) {
-        QString reply = answer;
-        reply.replace('\n', ' ');
-        reply.replace('\r', ' ');
-        reply = reply.simplified();
-        if (reply.size() > config.maxReplyChars)
-            reply = reply.left(config.maxReplyChars).trimmed();
-        if (!reply.isEmpty()) {
-            QJsonArray history = histories.value(current.uid);
-            history.append(QJsonObject{{"role", "user"},
-                {"content", QString("%1：%2").arg(current.name, current.text)}});
-            history.append(QJsonObject{{"role", "assistant"}, {"content", reply}});
-            const int maxMessages = config.memoryTurns * 2;
-            while (history.size() > maxMessages && !history.isEmpty())
-                history.removeAt(0);
-            if (config.memoryTurns > 0) {
-                if (!histories.contains(current.uid) && histories.size() >= 500)
-                    histories.erase(histories.begin());
-                histories.insert(current.uid, history);
+    QObject::connect(&ai, &AIClient::finished, &app,
+        [&](qint64 uid, const QString &name, const QString &answer) {
+            QString reply = answer;
+            reply.replace('\n', ' ');
+            reply.replace('\r', ' ');
+            reply = reply.simplified();
+            if (reply.size() > config.maxReplyChars)
+                reply = reply.left(config.maxReplyChars).trimmed();
+            if (!reply.isEmpty()) {
+                const quint64 requestId = nextSendId++;
+                pendingReplies.insert(requestId,
+                    PendingReply{ChatRequest{uid, name, {}}, reply});
+                log(QString("准备发送回复：%1").arg(reply));
+                bilibili.sendDanmaku(reply, requestId);
             }
-            recentBotMessages.insert(reply, QDateTime::currentSecsSinceEpoch());
-            log(QString("准备发送回复：%1").arg(reply));
-            bilibili.sendDanmaku(reply);
-        }
-        busy = false;
-        QTimer::singleShot(0, &app, processNext);
-    });
-    QObject::connect(&ai, &AIClient::failed, &app, [&](const QString &reason) {
-        log("AI 请求失败：" + reason);
-        busy = false;
-        QTimer::singleShot(0, &app, processNext);
-    });
+            busy = false;
+            QTimer::singleShot(0, &app, processNext);
+        });
+
+    QObject::connect(&ai, &AIClient::failed, &app,
+        [&](qint64, const QString &name, const QString &reason) {
+            log(QString("AI 请求失败（%1）：%2").arg(name, reason));
+            busy = false;
+            QTimer::singleShot(0, &app, processNext);
+        });
+
+    QObject::connect(&bilibili, &BilibiliClient::danmakuSendFinished, &app,
+        [&](quint64 requestId, const QString &text, bool success, const QString &reason) {
+            if (requestId == 0) return; // Plugin-originated sends have no AI history.
+            auto it = pendingReplies.find(requestId);
+            if (it == pendingReplies.end()) return;
+            if (success) {
+                const qint64 uid = it->request.uid;
+                QJsonArray history = histories.value(uid);
+                bool validPairs = (history.size() % 2 == 0);
+                for (int i = 0; validPairs && i < history.size(); i += 2) {
+                    validPairs = history.at(i).toObject().value("role").toString() == "user" &&
+                        history.at(i + 1).toObject().value("role").toString() == "assistant";
+                }
+                if (!validPairs) history = QJsonArray();
+                history.append(QJsonObject{{"role", "user"},
+                    {"content", QString("%1：%2").arg(it->request.name, it->request.text)}});
+                history.append(QJsonObject{{"role", "assistant"}, {"content", it->answer}});
+                while (history.size() > config.memoryTurns * 2 && history.size() >= 2) {
+                    history.removeAt(0);
+                    history.removeAt(0);
+                }
+                if (config.memoryTurns > 0) {
+                    if (!histories.contains(uid) && histories.size() >= 500)
+                        histories.erase(histories.begin());
+                    histories.insert(uid, history);
+                }
+                recentBotMessagesMs.insert(text, monotonicClock.elapsed());
+            } else {
+                log("AI 回复未被 Bilibili 接受，不加入回显去重表或对话历史：" + reason);
+            }
+            pendingReplies.erase(it);
+        });
 
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &bilibili, &BilibiliClient::stop);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &ai, &AIClient::stop);
