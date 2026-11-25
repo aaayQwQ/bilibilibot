@@ -4,6 +4,7 @@
 #include "plugin_api.hpp"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QCommandLineParser>
 #include <QDateTime>
 #include <QFileInfo>
@@ -28,7 +29,7 @@ struct PendingReply {
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName("bilibilibot");
-    QCoreApplication::setApplicationVersion("1.0.1");
+    QCoreApplication::setApplicationVersion("1.0.2");
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Bilibili live-room AI danmaku bot");
@@ -50,7 +51,7 @@ int main(int argc, char *argv[]) {
         out << "[" << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
             << "] " << message << Qt::endl;
     };
-    log("bilibilibot 1.0.1 启动。");
+    log("bilibilibot 1.0.2 启动。");
     log(QString("直播间：%1；关键词：%2").arg(config.roomId).arg(config.keywords.join(" | ")));
     log("运行数据仅保存在内存中；按 Ctrl+C 退出。");
 
