@@ -14,6 +14,27 @@
 
 namespace {
 const int kHeaderSize = 16;
+QJsonValue firstField(const QJsonObject &object, const QStringList &keys) {
+    for (const QString &key : keys) {
+        const QJsonValue value = object.value(key);
+        if (!value.isUndefined() && !value.isNull()) return value;
+    }
+    return {};
+}
+qint64 numericField(const QJsonObject &object, const QStringList &keys, qint64 fallback = 0) {
+    const QJsonValue value = firstField(object, keys);
+    if (value.isDouble()) return qint64(value.toDouble());
+    if (value.isString()) {
+        bool ok = false;
+        const qint64 parsed = value.toString().trimmed().toLongLong(&ok);
+        if (ok) return parsed;
+    }
+    return fallback;
+}
+QString textField(const QJsonObject &object, const QStringList &keys) {
+    const QJsonValue value = firstField(object, keys);
+    return value.isString() ? value.toString() : QString();
+}
 }
 
 BilibiliClient::BilibiliClient(qint64 roomId, QString cookie, QString csrf, QObject *parent)
@@ -106,7 +127,8 @@ void BilibiliClient::beginLogin() {
         };
         imgKey_ = keyFromUrl(wbi.value("img_url").toString());
         subKey_ = keyFromUrl(wbi.value("sub_url").toString());
-        if (imgKey_.isEmpty() || subKey_.isEmpty()) {
+        static const QRegularExpression validWbiKey(QStringLiteral("^[A-Za-z0-9]{32}$"));
+        if (!validWbiKey.match(imgKey_).hasMatch() || !validWbiKey.match(subKey_).hasMatch()) {
             connecting_ = false;
             emit log("无法从 Bilibili 获取 WBI 签名密钥。");
             reconnect_.start();
@@ -349,10 +371,8 @@ void BilibiliClient::parseOnePacket(const QByteArray &packet, int depth) {
         qtWrapped += body;
 
         const QByteArray decompressed = qUncompress(qtWrapped);
-        if (decompressed.isEmpty()) {
-            emit log("zlib 弹幕数据解压失败或超过 8 MiB 上限。");
-            return;
-        }
+        // Empty payloads are harmless; there is no nested packet to parse.
+        if (decompressed.isEmpty()) return;
         parsePackets(decompressed, depth + 1);
         return;
     }
