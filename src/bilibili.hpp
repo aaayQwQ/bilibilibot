@@ -34,8 +34,8 @@ private:
     void loadDanmuInfo();
     void connectSocket(const QString &host, int port, const QString &token);
     void sendPacket(quint16 version, quint32 operation, const QByteArray &body);
-    void parsePackets(const QByteArray &data);
-    void parseOnePacket(const QByteArray &data);
+    void parsePackets(const QByteArray &data, int depth = 0);
+    void parseOnePacket(const QByteArray &data, int depth);
     void handleCommand(const QJsonObject &object);
     QString signedWbiQuery(const QMap<QString, QString> &params) const;
     static quint32 readU32(const char *p);
