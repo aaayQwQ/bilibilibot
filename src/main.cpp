@@ -15,6 +15,7 @@
 #include <QTextStream>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <QRegularExpression>
 
 struct ChatRequest {
     qint64 uid = 0;
@@ -29,7 +30,7 @@ struct PendingReply {
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName("bilibilibot");
-    QCoreApplication::setApplicationVersion("1.0.2");
+    QCoreApplication::setApplicationVersion("1.0.3");
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Bilibili live-room AI danmaku bot");
@@ -51,7 +52,7 @@ int main(int argc, char *argv[]) {
         out << "[" << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
             << "] " << message << Qt::endl;
     };
-    log("bilibilibot 1.0.2 启动。");
+    log("bilibilibot 1.0.3 启动。");
     log(QString("直播间：%1；关键词：%2").arg(config.roomId).arg(config.keywords.join(" | ")));
     log("运行数据仅保存在内存中；按 Ctrl+C 退出。");
 
@@ -140,12 +141,13 @@ int main(int argc, char *argv[]) {
         [&](qint64 uid, const QString &name, const QString &input, const QString &answer) {
             QString reply;
             reply.reserve(qMin<qsizetype>(answer.size(), config.maxReplyChars));
-            for (const QChar ch : answer) {
-                const auto category = ch.category();
+            const QVector<uint> codePoints = answer.toUcs4();
+            for (uint codePoint : codePoints) {
+                const auto category = QChar::category(codePoint);
                 if (category == QChar::Other_Control || category == QChar::Other_Format ||
                     category == QChar::Other_Surrogate || category == QChar::Other_NotAssigned)
                     continue;
-                reply.append(ch);
+                reply.append(QString::fromUcs4(&codePoint, 1));
             }
             reply = reply.simplified();
             if (reply.size() > config.maxReplyChars)
@@ -154,7 +156,19 @@ int main(int argc, char *argv[]) {
                 const quint64 requestId = nextSendId++;
                 pendingReplies.insert(requestId,
                     PendingReply{ChatRequest{uid, name, input}, reply});
-                log(QString("准备发送回复：%1").arg(reply));
+                log(QString("AI 回复已生成：request=%1，字符数=%2；准备发送。")
+                    .arg(requestId).arg(reply.size()));
+                if (config.logAiContent) {
+                    QString diagnostic = reply;
+                    if (config.redactAiContent) {
+                        static const QRegularExpression secretPattern(
+                            QStringLiteral("(?i)(SESSDATA|bili_jct|authorization|api[_-]?key)\\s*[:=]\\s*[^\\s,;]+"));
+                        diagnostic.replace(secretPattern, QStringLiteral("$1=[REDACTED]"));
+                        static const QRegularExpression bearerPattern(QStringLiteral("(?i)Bearer\\s+[^\\s]+"));
+                        diagnostic.replace(bearerPattern, QStringLiteral("Bearer [REDACTED]"));
+                    }
+                    log(QString("AI 回复内容（显式启用）：%1").arg(diagnostic));
+                }
                 bilibili.sendDanmaku(reply, requestId);
             }
             busy = false;
