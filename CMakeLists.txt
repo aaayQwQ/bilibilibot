@@ -11,9 +11,9 @@ find_package(ZLIB REQUIRED)
 
 add_executable(bilibilibot
     src/main.cpp
-    src/config.h src/config.cpp
-    src/bilibili.h src/bilibili.cpp
-    src/anthropic.h src/anthropic.cpp
+    src/config.hpp src/config.cpp
+    src/bilibili.hpp src/bilibili.cpp
+    src/anthropic.hpp src/anthropic.cpp
 )
 target_link_libraries(bilibilibot PRIVATE
     Qt6::Core Qt6::Network Qt6::WebSockets ZLIB::ZLIB
