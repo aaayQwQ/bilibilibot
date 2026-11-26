@@ -29,8 +29,9 @@
     [plugins]
     enabled=true
     allow_send_danmaku=true
+    allow_send_danmaku_plugins=gift-thanks
 
-两项默认均为 false。模板变量：`{user}`、`{gift}`、`{count}`、`{message}`、`{price}`、`{guard_level}`。
+两项全局开关默认均为 false；插件 ID 白名单默认为空。只有列入白名单的插件才能发送弹幕。多个 ID 使用分号分隔。模板变量：`{user}`、`{gift}`、`{count}`、`{message}`、`{price}`、`{guard_level}`。
 
 **安全边界说明：** 本版本没有 Lua/Wasm 引擎，也不加载第三方原生插件。未来计划优先评估受资源限制的 Wasm 运行时；在运行时隔离、燃料/内存限制、窄能力接口和三平台构建完成验证前，不应将脚本插件视为可用或安全。设计与迁移计划见 [插件架构方案](docs/PLUGIN_ARCHITECTURE.md)。
 
@@ -53,7 +54,7 @@ Windows MSVC 需要安装 Qt 6 对应的 MSVC Kit。GitHub Actions 会自动构�
 
 ## 插件示例
 
-仓库中的 `plugins/gift-thanks.json` 是礼物感谢示例。复制到程序配置目录下的 plugins 子目录，并显式开启上述两项权限即可启用。当前插件接口及限制见 [Plugin API v1](docs/PLUGIN_API.md)。
+仓库中的 `plugins/gift-thanks.json` 是礼物感谢示例。复制到程序配置目录下的 plugins 子目录，并显式开启插件开关、发送开关，同时将 `gift-thanks` 加入 `allow_send_danmaku_plugins` 白名单，才可启用感谢弹幕。当前插件接口及限制见 [Plugin API v1](docs/PLUGIN_API.md)。
 
 ## 兼容性
 
