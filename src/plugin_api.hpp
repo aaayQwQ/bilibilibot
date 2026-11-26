@@ -6,12 +6,16 @@
 #include <QElapsedTimer>
 #include <QSet>
 #include <functional>
+#include "action_broker.hpp"
 class PluginManager final : public QObject {
     Q_OBJECT
 public:
     using SendDanmaku = std::function<void(const QString &, std::function<void(bool)>)>;
     explicit PluginManager(QString directory, bool enabled, bool allowSendDanmaku,
                            SendDanmaku sender, QObject *parent = nullptr);
+    PluginManager(QString directory, bool enabled, bool allowSendDanmaku,
+                  SendDanmaku sender, QStringList allowedPluginIds, QObject *parent = nullptr);
+    void stop();
     void load();
     void dispatch(const QJsonObject &event);
     int pluginCount() const noexcept { return plugins_.size(); }
@@ -25,7 +29,8 @@ private:
     };
     QString directory_;
     bool enabled_ = false, allowSendDanmaku_ = false;
-    SendDanmaku sender_;
+    bool stopping_ = false;
+    ActionBroker broker_;
     QMap<QString, Rule> plugins_;
     QElapsedTimer monotonicClock_;
     qint64 lastGlobalSendMs_ = -1;

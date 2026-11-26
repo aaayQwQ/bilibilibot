@@ -16,6 +16,7 @@
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QRegularExpression>
+#include <QSettings>
 
 struct ChatRequest {
     qint64 uid = 0;
@@ -59,10 +60,18 @@ int main(int argc, char *argv[]) {
     BilibiliClient bilibili(config.roomId, config.cookie, config.csrf);
     AIClient ai(config);
     const QString pluginDirectory = QFileInfo(parser.value(configOption)).absoluteDir().filePath("plugins");
+    QSettings pluginSettings(parser.value(configOption), QSettings::IniFormat);
+    QStringList allowedPluginIds;
+    for (const QString &id : pluginSettings.value("plugins/allow_send_danmaku_plugins").toString()
+             .split(';', Qt::SkipEmptyParts)) {
+        const QString normalized = id.trimmed();
+        if (!normalized.isEmpty() && !allowedPluginIds.contains(normalized))
+            allowedPluginIds.push_back(normalized);
+    }
     PluginManager plugins(pluginDirectory, config.pluginsEnabled, config.pluginSendDanmakuEnabled,
                           [&bilibili](const QString &message, std::function<void(bool)> completion) {
                               bilibili.sendDanmaku(message, 0, completion);
-                          }, &app);
+                          }, allowedPluginIds, &app);
     QObject::connect(&plugins, &PluginManager::log, &app, log);
     plugins.load();
     QObject::connect(&bilibili, &BilibiliClient::eventReceived, &plugins, &PluginManager::dispatch);
@@ -226,6 +235,7 @@ int main(int argc, char *argv[]) {
             pendingReplies.erase(it);
         });
 
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &plugins, &PluginManager::stop);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &bilibili, &BilibiliClient::stop);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &ai, &AIClient::stop);
     bilibili.start();
