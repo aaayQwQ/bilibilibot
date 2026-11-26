@@ -3,6 +3,7 @@
 #include <QJsonObject>
 #include <QMap>
 #include <QString>
+#include <QStringList>
 #include <QElapsedTimer>
 #include <QSet>
 #include <functional>

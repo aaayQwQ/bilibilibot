@@ -31,7 +31,7 @@ endif()
 
 if(BUILD_TESTING)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
-    add_executable(test_plugin_api tests/test_plugin_api.cpp src/plugin_api.hpp src/plugin_api.cpp)
+    add_executable(test_plugin_api tests/test_plugin_api.cpp src/plugin_api.hpp src/plugin_api.cpp src/action_broker.hpp src/action_broker.cpp)
     target_include_directories(test_plugin_api PRIVATE src)
     target_link_libraries(test_plugin_api PRIVATE Qt6::Core Qt6::Test)
     if(MSVC)
