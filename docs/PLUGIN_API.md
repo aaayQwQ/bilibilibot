@@ -40,13 +40,19 @@ Allowed template variables: {user}, {gift}, {count}, {message}, {price}, {guard_
 
 ## Permission gates
 
-Both settings must be enabled:
+Three gates must be satisfied to send danmaku:
 
     [plugins]
     enabled=true
     allow_send_danmaku=true
+    allow_send_danmaku_plugins=gift-thanks
 
-The default for both is false. If the action permission is not granted, plugin events are ignored and no message is sent.
+- `enabled` enables JSON plugin loading; default: `false`.
+- `allow_send_danmaku` enables the global send-danmaku capability; default: `false`.
+- `allow_send_danmaku_plugins` is a semicolon-separated allowlist of plugin IDs. It is empty by default. A plugin absent from this list cannot send, even when the two global switches are enabled.
+- A manifest cannot grant a capability to itself. Removing an ID revokes that plugin's send permission; restart the application to apply the configuration.
+
+Missing or malformed authorization fails closed. A plugin may still be loaded for read-only event processing when sending is not authorized.
 
 ## Resource limits
 

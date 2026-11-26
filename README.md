@@ -4,6 +4,14 @@
 
 轻量级 Bilibili 直播间机器人，通过 Qt Network / WebSockets 连接弹幕服务，可接入 OpenAI 兼容或 Anthropic Messages API，并提供受限的 JSON 声明式插件接口。
 
+## 从哪里开始
+
+- **第一次使用：** [配置与运行](#配置和运行)
+- **想了解源码：** [项目结构与阅读顺序](docs/PROJECT_GUIDE.md)
+- **想编写 JSON 插件：** [Plugin API v1](docs/PLUGIN_API.md)
+- **想了解插件架构规划：** [插件架构与实际进度](docs/PLUGIN_ARCHITECTURE.md)
+- **想查看变更：** [GitHub Releases](https://github.com/aaayQwQ/bilibilibot/releases)
+
 ## 版本与更新日志
 
 项目版本、更新内容及发行说明统一发布在 GitHub Releases 中，README 不维护更新日志。
