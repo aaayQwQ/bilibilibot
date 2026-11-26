@@ -71,11 +71,6 @@ QString stringField(const QJsonObject &object, const QStringList &keys) {
 }
 
 PluginManager::PluginManager(QString directory, bool enabled, bool allowSendDanmaku,
-                             SendDanmaku sender, QObject *parent)
-    : PluginManager(std::move(directory), enabled, allowSendDanmaku, std::move(sender),
-                    QStringList{QStringLiteral("*")}, parent) {}
-
-PluginManager::PluginManager(QString directory, bool enabled, bool allowSendDanmaku,
                              SendDanmaku sender, QStringList allowedPluginIds, QObject *parent)
     : QObject(parent), directory_(std::move(directory)), enabled_(enabled),
       allowSendDanmaku_(allowSendDanmaku),
@@ -89,7 +84,7 @@ void PluginManager::load() {
     if (stopping_) return;
     plugins_.clear();
     if (!enabled_) { emit log(QStringLiteral("插件系统处于关闭状态。")); return; }
-    if (!allowSendDanmaku_ || !sender_)
+    if (!allowSendDanmaku_)
         emit log(QStringLiteral("插件发送弹幕权限未授权，写操作保持关闭。"));
     const QFileInfo directoryInfo(directory_);
     if (directoryInfo.isSymLink()) {

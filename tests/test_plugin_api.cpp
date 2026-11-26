@@ -20,7 +20,7 @@ private slots:
         QVERIFY(writeManifest(dir.path(), "gift.json",
             R"({"schema_version":1,"id":"gift-thanks","enabled":true,"event":"gift","min_gift_count":2,"cooldown_seconds":0,"action":{"type":"send_danmaku","template":"感谢 {user} 送出 {gift} x{count}"}})"));
         QStringList sent;
-        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); });
+        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); }, {"*"});
         manager.load(); QCOMPARE(manager.pluginCount(), 1);
         manager.dispatch(QJsonObject{{"type","gift"},{"user","Alice"},{"gift","小心心"},{"count","3"}});
         QCOMPARE(sent.size(), 1); QCOMPARE(sent.first(), QStringLiteral("感谢 Alice 送出 小心心 x3"));
@@ -28,7 +28,7 @@ private slots:
     void sendPermissionIsRequired() {
         QTemporaryDir dir; QVERIFY(dir.isValid());
         QStringList sent;
-        PluginManager manager(dir.path(), true, false, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); });
+        PluginManager manager(dir.path(), true, false, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); }, {"*"});
         manager.dispatch(QJsonObject{{"type","gift"}});
         QVERIFY(sent.isEmpty());
     }
@@ -41,7 +41,7 @@ private slots:
             [&attempts](const QString &, std::function<void(bool)> done) {
                 ++attempts;
                 done(false);
-            });
+            }, {"*"});
         manager.load();
         const QJsonObject event{{"type","gift"},{"count",1}};
         manager.dispatch(event);
@@ -53,7 +53,7 @@ private slots:
         QVERIFY(writeManifest(dir.path(), "unknown.json",
             R"({"schema_version":1,"id":"unknown","enabled":true,"event":"gift","cooldown_seconds":0,"action":{"type":"send_danmaku","template":"Hi {unknown}"}})"));
         QStringList sent;
-        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); });
+        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); }, {"*"});
         manager.load(); manager.dispatch(QJsonObject{{"type","gift"}});
         QVERIFY(sent.isEmpty());
     }
@@ -62,7 +62,7 @@ private slots:
         QVERIFY(writeManifest(dir.path(), "safe.json",
             R"({"schema_version":1,"id":"safe","enabled":true,"event":"gift","cooldown_seconds":0,"action":{"type":"send_danmaku","template":"Hello {user}"}})"));
         QStringList sent;
-        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); });
+        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); }, {"*"});
         manager.load();
         manager.dispatch(QJsonObject{{"type","gift"},{"count",1},{"user",QStringLiteral("A\nB\u202e")}});
         QCOMPARE(sent.size(), 1);
@@ -74,7 +74,7 @@ private slots:
         QVERIFY(writeManifest(dir.path(), "unicode.json",
             R"({"schema_version":1,"id":"unicode","enabled":true,"event":"gift","cooldown_seconds":0,"action":{"type":"send_danmaku","template":"Hi {user}"}})"));
         QStringList sent;
-        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); });
+        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); }, {"*"});
         manager.load();
         const QString name = QString::fromUtf8("A😀𠀋👨‍👩‍👧‍👦");
         manager.dispatch(QJsonObject{{"type","gift"},{"count",1},{"user",name}});
@@ -86,7 +86,7 @@ private slots:
         QVERIFY(writeManifest(dir.path(), "range.json",
             R"({"schema_version":1,"id":"range","enabled":true,"event":"gift","min_gift_count":1,"cooldown_seconds":0,"action":{"type":"send_danmaku","template":"count={count}"}})"));
         QStringList sent;
-        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); });
+        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); }, {"*"});
         manager.load();
         manager.dispatch(QJsonObject{{"type","gift"},{"count",1.0e300}});
         manager.dispatch(QJsonObject{{"type","gift"},{"count",-1.0e300}});
@@ -101,7 +101,7 @@ private slots:
             {"action",QJsonObject{{"type","send_danmaku"},{"template",templateText}}}
         }).toJson(QJsonDocument::Compact);
         QVERIFY(writeManifest(dir.path(), "long.json", json));
-        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); });
+        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); }, {"*"});
         manager.load(); QCOMPARE(manager.pluginCount(), 0);
     }
     void cooldownBlocksImmediateRepeat() {
@@ -109,7 +109,7 @@ private slots:
         QVERIFY(writeManifest(dir.path(), "cooldown.json",
             R"({"schema_version":1,"id":"cooldown","enabled":true,"event":"gift","cooldown_seconds":30,"action":{"type":"send_danmaku","template":"thanks"}})"));
         QStringList sent;
-        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); });
+        PluginManager manager(dir.path(), true, true, [&sent](const QString &s, std::function<void(bool)> done){ sent.push_back(s); done(true); }, {"*"});
         manager.load();
         const QJsonObject event{{"type","gift"},{"count",1}};
         manager.dispatch(event);
@@ -120,7 +120,7 @@ private slots:
     void malformedJsonIsIgnored() {
         QTemporaryDir dir; QVERIFY(dir.isValid());
         QVERIFY(writeManifest(dir.path(), "broken.json", "{not-json"));
-        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); });
+        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); }, {"*"});
         manager.load(); QCOMPARE(manager.pluginCount(), 0);
     }
     void duplicateIdsAreRejected() {
@@ -128,7 +128,7 @@ private slots:
         const QByteArray json = R"({"schema_version":1,"id":"same","enabled":true,"event":"gift","cooldown_seconds":0,"action":{"type":"send_danmaku","template":"ok"}})";
         QVERIFY(writeManifest(dir.path(), "a.json", json));
         QVERIFY(writeManifest(dir.path(), "b.json", json));
-        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); });
+        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); }, {"*"});
         manager.load(); QCOMPARE(manager.pluginCount(), 1);
     }
     void symbolicLinkManifestIsIgnored() {
@@ -140,7 +140,7 @@ private slots:
         QFile targetFile(target);
         if (!targetFile.link(link) || !QFileInfo(link).isSymLink())
             QSKIP("Symbolic links are unavailable in this test environment.");
-        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); });
+        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); }, {"*"});
         manager.load(); QCOMPARE(manager.pluginCount(), 1);
     }
     void pluginCountIsBounded() {
@@ -153,7 +153,7 @@ private slots:
             }).toJson(QJsonDocument::Compact);
             QVERIFY(writeManifest(dir.path(), id + ".json", json));
         }
-        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); });
+        PluginManager manager(dir.path(), true, true, [](const QString &, std::function<void(bool)> done){ done(true); }, {"*"});
         manager.load(); QCOMPARE(manager.pluginCount(), 32);
     }
 };

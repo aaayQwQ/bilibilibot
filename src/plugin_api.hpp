@@ -12,8 +12,6 @@ class PluginManager final : public QObject {
     Q_OBJECT
 public:
     using SendDanmaku = std::function<void(const QString &, std::function<void(bool)>)>;
-    explicit PluginManager(QString directory, bool enabled, bool allowSendDanmaku,
-                           SendDanmaku sender, QObject *parent = nullptr);
     PluginManager(QString directory, bool enabled, bool allowSendDanmaku,
                   SendDanmaku sender, QStringList allowedPluginIds, QObject *parent = nullptr);
     void stop();
