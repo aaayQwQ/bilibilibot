@@ -1,4 +1,5 @@
 #include "plugin_api.hpp"
+#include <QPointer>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -70,16 +71,20 @@ QString stringField(const QJsonObject &object, const QStringList &keys) {
 }
 
 PluginManager::PluginManager(QString directory, bool enabled, bool allowSendDanmaku,
-                             SendDanmaku sender, QObject *parent)
+                             SendDanmaku sender, QStringList allowedPluginIds, QObject *parent)
     : QObject(parent), directory_(std::move(directory)), enabled_(enabled),
-      allowSendDanmaku_(allowSendDanmaku), sender_(std::move(sender)) {
+      allowSendDanmaku_(allowSendDanmaku),
+      broker_(ActionBroker::Policy{enabled, allowSendDanmaku,
+          QSet<QString>(allowedPluginIds.cbegin(), allowedPluginIds.cend()), 180, 3000},
+          std::move(sender)) {
     monotonicClock_.start();
 }
 
 void PluginManager::load() {
+    if (stopping_) return;
     plugins_.clear();
     if (!enabled_) { emit log(QStringLiteral("插件系统处于关闭状态。")); return; }
-    if (!allowSendDanmaku_ || !sender_)
+    if (!allowSendDanmaku_)
         emit log(QStringLiteral("插件发送弹幕权限未授权，写操作保持关闭。"));
     const QFileInfo directoryInfo(directory_);
     if (directoryInfo.isSymLink()) {
@@ -133,8 +138,14 @@ void PluginManager::load() {
     emit log(QStringLiteral("声明式插件已加载：%1 个。").arg(plugins_.size()));
 }
 
+void PluginManager::stop() {
+    stopping_ = true;
+    pendingRules_.clear();
+    plugins_.clear();
+}
+
 void PluginManager::dispatch(const QJsonObject &event) {
-    if (!enabled_ || !allowSendDanmaku_ || !sender_) return;
+    if (stopping_ || !enabled_) return;
     const QString eventType = event.value("type").toString();
     const qint64 now = monotonicClock_.elapsed();
     if (pendingGlobalSend_ || (lastGlobalSendMs_ >= 0 && now - lastGlobalSendMs_ < 3000)) return;
@@ -161,20 +172,26 @@ void PluginManager::dispatch(const QJsonObject &event) {
 
         const QString ruleId = rule.id;
         pendingRules_.insert(ruleId);
-        pendingGlobalSend_ = true;
-        sender_(text, [this, ruleId](bool success) {
-            pendingRules_.remove(ruleId);
-            pendingGlobalSend_ = false;
+        QPointer<PluginManager> guard(this);
+        const auto result = broker_.submit(ruleId, QStringLiteral("send_danmaku"), text,
+            [guard, ruleId](bool success) {
+            if (!guard || guard->stopping_) return;
+            guard->pendingRules_.remove(ruleId);
             if (!success) {
-                emit log(QStringLiteral("插件 %1 的弹幕发送失败；冷却时间不启动。").arg(ruleId));
+                emit guard->log(QStringLiteral("插件 %1 的弹幕发送失败；冷却时间不启动。").arg(ruleId));
                 return;
             }
-            auto completedRule = plugins_.find(ruleId);
-            if (completedRule != plugins_.end())
-                completedRule->lastTriggeredMs = monotonicClock_.elapsed();
-            lastGlobalSendMs_ = monotonicClock_.elapsed();
-            emit log(QStringLiteral("插件 %1 的弹幕已被 Bilibili 接受，冷却时间开始。").arg(ruleId));
+            auto completedRule = guard->plugins_.find(ruleId);
+            if (completedRule != guard->plugins_.end())
+                completedRule->lastTriggeredMs = guard->monotonicClock_.elapsed();
+            emit guard->log(QStringLiteral("插件 %1 的弹幕已被 Bilibili 接受，冷却时间开始。").arg(ruleId));
         });
+        if (!result.accepted) {
+            pendingRules_.remove(ruleId);
+            emit log(QStringLiteral("插件 %1 的动作被宿主拒绝：%2。")
+                .arg(ruleId, ActionBroker::errorName(result.error)));
+            continue;
+        }
         emit log(QStringLiteral("插件 %1 已提交弹幕发送请求。").arg(ruleId));
         break;
     }

@@ -39,6 +39,8 @@ memory_turns=4
 enabled=false
 ; 插件发送弹幕需要额外显式授权。
 allow_send_danmaku=false
+; 逐个授权允许发送弹幕的插件 ID，使用分号分隔；默认不授权任何插件。
+allow_send_danmaku_plugins=
 
 [logging]
 ; 默认不记录 AI 回复全文，只记录请求标识、字符数和发送状态。

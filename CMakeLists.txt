@@ -19,6 +19,8 @@ add_executable(bilibilibot
     src/bilibili.hpp src/bilibili.cpp
     src/anthropic.hpp src/anthropic.cpp
     src/plugin_api.hpp src/plugin_api.cpp
+    src/action_broker.hpp src/action_broker.cpp
+    src/plugin_contract.hpp src/plugin_contract.cpp
 )
 target_link_libraries(bilibilibot PRIVATE Qt6::Core Qt6::Network Qt6::WebSockets)
 if(MSVC)
@@ -29,7 +31,7 @@ endif()
 
 if(BUILD_TESTING)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
-    add_executable(test_plugin_api tests/test_plugin_api.cpp src/plugin_api.hpp src/plugin_api.cpp)
+    add_executable(test_plugin_api tests/test_plugin_api.cpp src/plugin_api.hpp src/plugin_api.cpp src/action_broker.hpp src/action_broker.cpp)
     target_include_directories(test_plugin_api PRIVATE src)
     target_link_libraries(test_plugin_api PRIVATE Qt6::Core Qt6::Test)
     if(MSVC)
@@ -38,6 +40,16 @@ if(BUILD_TESTING)
         target_compile_options(test_plugin_api PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME plugin_api COMMAND test_plugin_api)
+
+    add_executable(test_action_broker tests/test_action_broker.cpp src/action_broker.hpp src/action_broker.cpp)
+    target_include_directories(test_action_broker PRIVATE src)
+    target_link_libraries(test_action_broker PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME action_broker COMMAND test_action_broker)
+
+    add_executable(test_plugin_contract tests/test_plugin_contract.cpp src/plugin_contract.hpp src/plugin_contract.cpp)
+    target_include_directories(test_plugin_contract PRIVATE src)
+    target_link_libraries(test_plugin_contract PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME plugin_contract COMMAND test_plugin_contract)
 
     add_executable(test_config tests/test_config.cpp src/config.hpp src/config.cpp)
     target_include_directories(test_config PRIVATE src)
